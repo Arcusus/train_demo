@@ -310,7 +310,7 @@ const Game = (()=>{
   function renderEvent(ev){
     // 在文案后提示境界倍率（不改 UI 结构）
     const mult = realmMult();
-    document.getElementById("eventText").textContent = `${ev.text}（境界加成 ×${mult.toFixed(2)}）`;
+    document.getElementById("eventText").textContent = `${ev.text}`;
     const box = document.getElementById("choices"); box.innerHTML="";
     ev.choices.forEach(ch=>{
       const btn = document.createElement("button");
@@ -1389,3 +1389,4 @@ window.GameAPI = {
 </script>
 </body>
 </html>
+
