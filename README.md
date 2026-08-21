@@ -1,2 +1,2 @@
 # game
-xiuxian_2025
+subway_predict
