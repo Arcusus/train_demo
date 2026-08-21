@@ -1,0 +1,1169 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>MTA 1 Train Live</title>
+<script src="https://cdn.jsdelivr.net/npm/protobufjs@7.5.4/dist/protobuf.min.js"></script>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;max-width:620px;margin:auto;padding:20px;background:#f5f5f7;color:#111}
+.card{background:#fff;border-radius:16px;padding:16px;margin-top:12px}
+.row{display:grid;grid-template-columns:72px 1fr;align-items:center;padding:12px 0;border-top:1px solid #eee}
+.row:first-child{border-top:0}
+.row{cursor:pointer;border-radius:10px}
+.row.selected,.track.selected{background:#fff3cd}
+.num{font-size:28px;font-weight:700;font-variant-numeric:tabular-nums}
+.track{padding:10px 0;border-top:1px solid #eee}
+small{color:#666}
+button{width:100%;padding:12px;border:0;border-radius:12px;background:#111;color:#fff;font:inherit;margin-bottom:8px}
+.metric{display:flex;justify-content:space-between;gap:12px;padding:7px 0}
+.bar{height:8px;background:#eee;border-radius:6px;overflow:hidden;margin:4px 0 10px}
+.fill{height:100%;width:0;background:#d9232e;transition:width .8s linear}
+.mono{font-variant-numeric:tabular-nums}
+
+.outlook-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}
+.outlook-box{background:#f5f5f7;border-radius:12px;padding:10px}
+.outlook-value{font-size:20px;font-weight:700;font-variant-numeric:tabular-nums}
+.dist{display:flex;align-items:end;gap:3px;height:64px;margin-top:10px}
+.dist span{flex:1;background:#d9232e;border-radius:3px 3px 0 0;opacity:.72}
+.dist-labels{display:flex;justify-content:space-between;color:#666;font-size:11px}
+.env-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:6px;margin-top:12px}
+.env-item{display:flex;justify-content:space-between;gap:8px;padding:7px 0;border-top:1px solid #eee}
+.notice{margin-top:10px;padding:10px;border-radius:10px;background:#f5f5f7}
+.history-head{display:flex;justify-content:space-between;gap:10px;margin-top:12px}
+.history-row{padding:8px 0;border-top:1px solid #eee}
+.history-date{font-size:12px;color:#666}
+.history-chart{margin:10px 0 6px}
+.history-chart svg{width:100%;height:70px;display:block}
+.history-line{fill:none;stroke:#d9232e;stroke-width:2}
+.history-area{fill:#d9232e;opacity:.08}
+.history-axis{display:flex;justify-content:space-between;font-size:11px;color:#666}
+@media(max-width:480px){.outlook-grid{grid-template-columns:1fr}.env-grid{grid-template-columns:1fr}}
+
+.comfort-card{background:#fff;border-radius:16px;padding:16px;margin-top:12px}
+.comfort-top{display:flex;justify-content:space-between;align-items:end;gap:12px}
+.comfort-score{font-size:34px;font-weight:700;font-variant-numeric:tabular-nums}
+.comfort-bar{height:10px;background:#eee;border-radius:8px;overflow:hidden;margin:10px 0 6px}
+.comfort-fill{height:100%;width:0;background:#d9232e;transition:width .6s linear}
+</style>
+</head>
+<body>
+
+<h2>🚇 1 Train Live</h2>
+<div>Times Sq–42 St → 116 St–Columbia University</div>
+
+<div class="comfort-card" id="comfortCard" hidden>
+  <div class="comfort-top">
+    <div><small>Before you start</small><br><b>Comfort expectation</b></div>
+    <div class="comfort-score"><span id="comfortScore">--</span>%</div>
+  </div>
+  <div class="comfort-bar"><div class="comfort-fill" id="comfortFill"></div></div>
+  <small id="comfortLabel">Calculating weather, crowd and service…</small>
+</div>
+
+<div class="card">
+  <button id="refresh">Refresh</button>
+
+  <div class="row" id="row0">
+    <div class="num"><span id="w0">--</span>m</div>
+    <div>1st train<br><small>Columbia <span id="a0">--</span>m · ride <span id="r0">--</span>m</small></div>
+  </div>
+  <div class="row" id="row1">
+    <div class="num"><span id="w1">--</span>m</div>
+    <div>2nd train<br><small>Columbia <span id="a1">--</span>m · ride <span id="r1">--</span>m</small></div>
+  </div>
+  <div class="row" id="row2">
+    <div class="num"><span id="w2">--</span>m</div>
+    <div>3rd train<br><small>Columbia <span id="a2">--</span>m · ride <span id="r2">--</span>m</small></div>
+  </div>
+</div>
+
+<div class="card">
+  <b>Trains between now: <span id="count">--</span></b>
+  <div style="margin-top:8px">
+    <svg id="trackSvg"
+         viewBox="0 0 420 500"
+         style="width:100%;height:auto;display:block"
+         aria-label="1 Train positions between Times Square and Columbia">
+    </svg>
+  </div>
+  <small>Selected train is dark; other trains are lighter. A selected stop or segment is highlighted.</small>
+</div>
+
+<div class="card">
+  <b>Selected train</b>
+  <div id="selectedHint"><small>Select one of the 3 incoming trains.</small></div>
+
+  <div id="selectedInfo" hidden>
+    <div class="metric"><span>Next stop</span><b id="nextStop">--</b></div>
+    <div class="metric"><span>To next stop</span><b class="mono" id="nextRemain">--</b></div>
+    <div class="bar"><div class="fill" id="nextBar"></div></div>
+
+    <div class="metric"><span>Stops to Columbia</span><b id="stopsRemain">--</b></div>
+    <div class="metric"><span>ETA Columbia</span><b class="mono" id="columbiaETA">--</b></div>
+    <div class="metric"><span>Remaining</span><b class="mono" id="columbiaRemain">--</b></div>
+    <div class="bar"><div class="fill" id="journeyBar"></div></div>
+
+    <button id="arrivalReminderBtn" type="button">Arrival reminder: Off</button>
+    <small id="arrivalReminderStatus">Tap to remind you near 116 St–Columbia.</small><br>
+
+    <small>Offline estimate between MTA refreshes; corrected every 30 s.</small>
+  </div>
+</div>
+
+<div class="card">
+  <b>Trip outlook</b>
+  <div id="outlookHint"><small>Select a train first.</small></div>
+  <div id="outlookInfo" hidden>
+    <div class="outlook-grid">
+      <div class="outlook-box">
+        <small>≤ ETA + 2 min</small>
+        <div class="outlook-value" id="onTimeProb">--%</div>
+      </div>
+      <div class="outlook-box">
+        <small>Avg speed</small>
+        <div class="outlook-value"><span id="speed">--</span> mph</div>
+      </div>
+      <div class="outlook-box">
+        <small>CO₂ saved</small>
+        <div class="outlook-value"><span id="carbon">--</span> kg</div>
+      </div>
+    </div>
+
+    <div class="dist">
+      <span id="d0"></span><span id="d1"></span><span id="d2"></span>
+      <span id="d3"></span><span id="d4"></span><span id="d5"></span>
+      <span id="d6"></span><span id="d7"></span><span id="d8"></span>
+    </div>
+    <div class="dist-labels"><span>-4 min</span><span>ETA</span><span>+4 min</span></div>
+
+    <div class="env-grid">
+      <div class="env-item"><span>NYC temp</span><b id="cityTemp">--</b></div>
+      <div class="env-item"><span>Humidity</span><b id="humidity">--</b></div>
+      <div class="env-item"><span>Rain chance</span><b id="rainChance">--</b></div>
+      <div class="env-item"><span>Snow chance est.</span><b id="snowChance">--</b></div>
+      <div class="env-item"><span>Flood risk est.</span><b id="floodRisk">--</b></div>
+      <div class="env-item"><span>Crowd est.</span><b id="crowdness">--</b></div>
+    </div>
+
+    <div class="notice">
+      <small>MTA notice</small><br>
+      <b id="mtaNotice">No train-specific delay alert</b>
+    </div>
+
+    <div class="notice">
+      <small>Destination activity · 116 St–Columbia</small><br>
+      <b id="destinationActivity">No nearby police/fire activity in MTA alerts</b>
+    </div>
+
+    <div class="history-head">
+      <b>1 Train history · Same month last year</b>
+      <small id="historyWindow">same month last year</small>
+    </div>
+    <div class="notice">
+      <small><b>History note:</b> Weekend planned work caused the largest recurring disruptions. On normal weekdays, most incidents were short door, mechanical, NYPD, or signal problems; signal issues tended to create the broadest delays. Times Sq–Columbia has also seen occasional incidents around Times Sq, 59 St, 96 St, and 116 St.</small>
+    </div>
+
+    <div class="history-chart">
+      <div class="history-date" id="historySummary">Loading same month last year notices…</div>
+      <svg viewBox="0 0 300 70" preserveAspectRatio="none" aria-label="1 Train notice count over the same month last year">
+        <path id="historyArea" class="history-area" d=""></path>
+        <polyline id="historyLine" class="history-line" points=""></polyline>
+        <g id="historyDots"></g>
+      </svg>
+      <div class="history-axis"><span>month start</span><span>notices/day</span><span>month end</span></div>
+    </div>
+
+    <div id="historyRows"><small>Loading history…</small></div>
+
+    <small>History is line-level, not the same physical train. Arrival probability, crowd and flood are simplified estimates. Weather: Open-Meteo. Current MTA notice: GTFS-Realtime Alert. Historical notices: NY Open Data.</small>
+  </div>
+</div>
+
+<script>
+const FEED="https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs";
+
+const PROTO=`
+syntax="proto2";
+package transit_realtime;
+message FeedMessage{required FeedHeader header=1;repeated FeedEntity entity=2;}
+message FeedHeader{required string gtfs_realtime_version=1;optional uint64 timestamp=3;}
+message FeedEntity{
+  required string id=1;
+  optional TripUpdate trip_update=3;
+  optional VehiclePosition vehicle=4;
+  optional Alert alert=5;
+}
+message TripUpdate{required TripDescriptor trip=1;repeated StopTimeUpdate stop_time_update=2;}
+message TripDescriptor{optional string trip_id=1;optional string route_id=5;}
+message StopTimeUpdate{
+  optional uint32 stop_sequence=1;
+  optional StopTimeEvent arrival=2;
+  optional StopTimeEvent departure=3;
+  optional string stop_id=4;
+}
+message StopTimeEvent{optional int32 delay=1;optional int64 time=2;}
+message VehiclePosition{
+  optional TripDescriptor trip=1;
+  optional uint32 current_stop_sequence=3;
+  optional int32 current_status=4 [default=2];
+  optional uint64 timestamp=5;
+  optional string stop_id=7;
+  optional int32 occupancy_status=9;
+}
+message TimeRange{optional uint64 start=1;optional uint64 end=2;}
+message EntitySelector{
+  optional string agency_id=1;
+  optional string route_id=2;
+  optional int32 route_type=3;
+  optional TripDescriptor trip=4;
+  optional string stop_id=5;
+}
+message Translation{required string text=1;optional string language=2;}
+message TranslatedString{repeated Translation translation=1;}
+message Alert{
+  repeated TimeRange active_period=1;
+  repeated EntitySelector informed_entity=5;
+  optional TranslatedString header_text=10;
+  optional TranslatedString description_text=11;
+}
+`;
+
+const root=protobuf.parse(PROTO).root;
+const FeedMessage=root.lookupType("transit_realtime.FeedMessage");
+
+const IDS=["127","126","125","124","123","122","121","120","119","118","117"];
+const TRACK_IDS=["128",...IDS];
+const NAME={
+  "128":"34 St–Penn Station",
+  "127":"Times Sq–42 St",
+  "126":"50 St",
+  "125":"59 St–Columbus Circle",
+  "124":"66 St–Lincoln Center",
+  "123":"72 St",
+  "122":"79 St",
+  "121":"86 St",
+  "120":"96 St",
+  "119":"103 St",
+  "118":"110 St",
+  "117":"116 St–Columbia"
+};
+
+function n(x){return x==null?null:Number(x.toString())}
+
+let selectedTrip=null;
+let currentTrips=[null,null,null];
+let currentActive=[];
+
+let arrivalReminderOn=false;
+let arrivalReminderTrip=null;
+let arrivalReminderTriggered=false;
+const tripSnapshots=new Map();
+const vehicleState=new Map();
+let mtaAlerts=[];
+let weatherState={
+  temp:null, humidity:null, rain:null, snow:null, flood:"--"
+};
+
+function fmtRemain(sec){
+  sec=Math.max(0,Math.round(sec));
+  const m=Math.floor(sec/60), s=sec%60;
+  return m>0 ? `${m}m ${String(s).padStart(2,"0")}s` : `${s}s`;
+}
+
+function clamp01(x){return Math.max(0,Math.min(1,x))}
+function erf(x){
+  const s=x<0?-1:1; x=Math.abs(x);
+  const t=1/(1+0.3275911*x);
+  const y=1-(((((1.061405429*t-1.453152027)*t+1.421413741)*t-0.284496736)*t+0.254829592)*t)*Math.exp(-x*x);
+  return s*y;
+}
+function normalCDF(x,sigma){
+  return 0.5*(1+erf(x/(sigma*Math.sqrt(2))));
+}
+
+
+function translatedText(ts){
+  return ts?.translation?.[0]?.text || "";
+}
+
+function crowdEstimate(){
+  const v=vehicleState.get(selectedTrip);
+  const o=v?.occupancyStatus;
+
+  // GTFS occupancy_status if MTA supplies it.
+  if(o!=null){
+    if(o===0 || o===1) return "Low";
+    if(o===2) return "Medium";
+    if(o===3 || o===4 || o===5) return "High";
+  }
+
+  // Fallback: simple NYC weekday/time heuristic.
+  const d=new Date();
+  const h=d.getHours();
+  const weekday=d.getDay()>=1 && d.getDay()<=5;
+  if(weekday && ((h>=7&&h<10)||(h>=16&&h<19))) return "High*";
+  if((h>=10&&h<16)||(h>=19&&h<22)) return "Medium*";
+  return "Low*";
+}
+
+function selectedMtaNotice(){
+  let routeNotice="";
+
+  for(const a of mtaAlerts){
+    const text=translatedText(a.headerText) ||
+               translatedText(a.descriptionText) ||
+               "MTA alert";
+
+    for(const ent of a.informedEntity||[]){
+      if(ent.trip?.tripId===selectedTrip) return text;
+      if(ent.routeId==="1") routeNotice=text;
+    }
+  }
+  return routeNotice || "No train-specific delay alert";
+}
+
+
+function comfortExpectation(){
+  const card=document.getElementById("comfortCard");
+
+  if(!selectedTrip){
+    card.hidden=true;
+    return;
+  }
+
+  card.hidden=false;
+  let weather=80;
+
+  if(weatherState.temp!=null){
+    weather=100-Math.abs(weatherState.temp-72)*2;
+  }
+
+  if(weatherState.humidity!=null && weatherState.humidity>60){
+    weather-=Math.min(18,(weatherState.humidity-60)*0.45);
+  }
+
+  if(weatherState.rain!=null) weather-=weatherState.rain*0.18;
+  if(weatherState.snow!=null) weather-=weatherState.snow*0.12;
+
+  if(weatherState.flood==="Moderate*") weather-=8;
+  if(weatherState.flood==="Elevated*") weather-=16;
+  if(weatherState.flood==="High*") weather-=28;
+
+  weather=Math.max(0,Math.min(100,weather));
+
+  const crowd=crowdEstimate();
+  let crowdScore=75;
+  if(crowd.startsWith("Low")) crowdScore=95;
+  else if(crowd.startsWith("Medium")) crowdScore=75;
+  else if(crowd.startsWith("High")) crowdScore=45;
+
+  const notice=selectedMtaNotice();
+  let service=95;
+  const s=String(notice||"").toLowerCase();
+
+  if(s.includes("suspend")) service=10;
+  else if(s.includes("signal")) service=40;
+  else if(s.includes("delay")) service=55;
+  else if(s.includes("service change")) service=65;
+
+  const walking=Math.max(
+    0,
+    Math.min(100,weather-(weatherState.rain||0)*0.08)
+  );
+
+  const score=Math.round(
+    Math.max(
+      0,
+      Math.min(
+        100,
+        0.35*weather +
+        0.30*crowdScore +
+        0.25*service +
+        0.10*walking
+      )
+    )
+  );
+
+  let label="Comfortable";
+  if(score>=85) label="Very comfortable";
+  else if(score>=70) label="Comfortable";
+  else if(score>=55) label="Fair";
+  else if(score>=40) label="Uncomfortable";
+  else label="Poor";
+
+  const reasons=[];
+  if(crowdScore<=50) reasons.push("high crowd");
+  else if(crowdScore>=90) reasons.push("low crowd");
+  if(weather>=85) reasons.push("comfortable weather");
+  else if(weather<60) reasons.push("weather may reduce comfort");
+  if(service<70) reasons.push("service conditions");
+  else reasons.push("no major service issue");
+
+  document.getElementById("comfortScore").textContent=score;
+  document.getElementById("comfortFill").style.width=score+"%";
+  document.getElementById("comfortLabel").textContent=
+    `${label} · ${reasons.slice(0,3).join(" · ")}`;
+}
+
+
+function destinationActivity(){
+  const keywords=[
+    "nypd","police","fdny","fire","smoke",
+    "emergency","investigation","medical"
+  ];
+
+  let routeLevel="";
+
+  for(const a of mtaAlerts){
+    const text=(
+      (translatedText(a.headerText)||"") + " " +
+      (translatedText(a.descriptionText)||"")
+    ).trim();
+
+    const lower=text.toLowerCase();
+    if(!keywords.some(k=>lower.includes(k))) continue;
+
+    for(const ent of a.informedEntity||[]){
+      // Most specific: Columbia stop itself.
+      if(ent.stopId==="117N" || ent.stopId==="117S" || ent.stopId==="117"){
+        return text || "Emergency activity near 116 St–Columbia";
+      }
+
+      // Some alerts are route-level but explicitly mention Columbia / 116 St.
+      if(
+        ent.routeId==="1" &&
+        (
+          lower.includes("116 st") ||
+          lower.includes("columbia")
+        )
+      ){
+        return text || "Emergency activity near 116 St–Columbia";
+      }
+
+      if(ent.routeId==="1") routeLevel=text;
+    }
+  }
+
+  // Do not label route-wide activity as destination-specific unless text mentions the area.
+  return routeLevel &&
+    (routeLevel.toLowerCase().includes("116 st") ||
+     routeLevel.toLowerCase().includes("columbia"))
+      ? routeLevel
+      : "No nearby police/fire activity in MTA alerts";
+}
+
+function renderEnvironment(){
+  document.getElementById("cityTemp").textContent=
+    weatherState.temp==null ? "--" : `${weatherState.temp.toFixed(0)}°F`;
+
+  document.getElementById("humidity").textContent=
+    weatherState.humidity==null ? "--" : `${weatherState.humidity.toFixed(0)}%`;
+
+  document.getElementById("rainChance").textContent=
+    weatherState.rain==null ? "--" : `${weatherState.rain}%`;
+
+  document.getElementById("snowChance").textContent=
+    weatherState.snow==null ? "--" : `${weatherState.snow}%`;
+
+  document.getElementById("floodRisk").textContent=weatherState.flood;
+  document.getElementById("crowdness").textContent=crowdEstimate();
+  document.getElementById("mtaNotice").textContent=selectedMtaNotice();
+  document.getElementById("destinationActivity").textContent=destinationActivity();
+  comfortExpectation();
+}
+
+
+function affectedIncludes1(value){
+  const tokens=String(value||"")
+    .split("|")
+    .map(x=>x.trim())
+    .filter(Boolean);
+
+  return tokens.some(t=>/^1(?:\s|$)/i.test(t));
+}
+
+function historyDateLabel(s){
+  if(!s) return "";
+  const d=new Date(s);
+  if(Number.isNaN(d.getTime())) return String(s);
+  return d.toLocaleDateString([], {month:"short",day:"numeric"}) +
+         " " +
+         d.toLocaleTimeString([], {hour:"numeric",minute:"2-digit"});
+}
+
+function dateKeyUTC(d){
+  return d.toISOString().slice(0,10);
+}
+
+function unwrapRows(payload){
+  if(Array.isArray(payload)) return payload;
+  if(Array.isArray(payload?.data)) return payload.data;
+  if(Array.isArray(payload?.response)) return payload.response;
+  if(Array.isArray(payload?.data?.response)) return payload.data.response;
+  if(Array.isArray(payload?.results)) return payload.results;
+  return [];
+}
+
+async function updateHistory(){
+  const box=document.getElementById("historyRows");
+  const windowLabel=document.getElementById("historyWindow");
+  const summary=document.getElementById("historySummary");
+  const line=document.getElementById("historyLine");
+  const area=document.getElementById("historyArea");
+  const API="https://data.ny.gov/resource/7kct-peq7.json";
+
+  try{
+    box.innerHTML="<small>Loading full same-month-last-year history…</small>";
+    summary.textContent="Loading same-month-last-year notice counts…";
+
+    // Same calendar month, one year earlier.
+    // Example: Aug 2026 -> Aug 1–31, 2025.
+    const now=new Date();
+    const year=now.getUTCFullYear()-1;
+    const month=now.getUTCMonth();
+
+    const startUTC=new Date(Date.UTC(year,month,1));
+    const endUTC=new Date(Date.UTC(year,month+1,0));
+
+    const startKey=dateKeyUTC(startUTC);
+    const endKey=dateKeyUTC(endUTC);
+
+    const where=
+      `date >= '${startKey}T00:00:00' ` +
+      `AND date <= '${endKey}T23:59:59' ` +
+      `AND affected like '%1%'`;
+
+    const params=new URLSearchParams({
+      "$select":"event_id,update_number,date,status_label,affected,header,description",
+      "$where":where,
+      "$order":"date DESC, update_number DESC",
+      "$limit":"5000"
+    });
+
+    const r=await fetch(API+"?"+params.toString());
+    if(!r.ok) throw new Error("archive HTTP "+r.status);
+
+    const payload=await r.json();
+    const rows=Array.isArray(payload) ? payload :
+      (Array.isArray(payload?.data) ? payload.data : []);
+
+    if(!rows.length){
+      throw new Error("archive returned 0 rows");
+    }
+
+    // Deduplicate revisions: keep newest revision for every Event ID.
+    const unique=[];
+    const seenEvents=new Set();
+
+    for(const row of rows){
+      if(!affectedIncludes1(row.affected)) continue;
+
+      const id=String(row.event_id || row.header || row.date);
+      if(seenEvents.has(id)) continue;
+
+      seenEvents.add(id);
+      unique.push(row);
+    }
+
+    // Build one point for each calendar day in the same month last year.
+    const days=endUTC.getUTCDate();
+    const counts=new Array(days).fill(0);
+
+    for(const row of unique){
+      const d=String(row.date||"").slice(0,10);
+      if(!d.startsWith(startKey.slice(0,7))) continue;
+      const day=Number(d.slice(8,10));
+      if(day>=1 && day<=days) counts[day-1]++;
+    }
+
+    const total=counts.reduce((a,b)=>a+b,0);
+    const peak=Math.max(0,...counts);
+
+    const monthLabel=startUTC.toLocaleDateString([],{
+      month:"long",
+      year:"numeric",
+      timeZone:"UTC"
+    });
+
+    windowLabel.textContent=monthLabel;
+    summary.textContent=
+      `${total} unique 1 Train notices · peak ${peak}/day`;
+
+    // Plot ONLY the same month last year's dates.
+    const maxCount=Math.max(1,peak);
+    const pts=counts.map((c,i)=>{
+      const x=days===1 ? 150 : i*(300/(days-1));
+      const y=62-(c/maxCount)*52;
+      return {x,y,c};
+    });
+
+    const pointString=pts
+      .map(p=>`${p.x.toFixed(1)},${p.y.toFixed(1)}`)
+      .join(" ");
+
+    line.setAttribute("points",pointString);
+
+    area.setAttribute(
+      "d",
+      `M0,62 L${pts.map(p=>`${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" L")} L300,62 Z`
+    );
+
+    const axis=document.querySelector(".history-axis");
+    if(axis){
+      axis.innerHTML=
+        `<span>${startUTC.toLocaleDateString([], {month:"short",day:"numeric",timeZone:"UTC"})}</span>` +
+        `<span>notices/day</span>` +
+        `<span>${endUTC.toLocaleDateString([], {month:"short",day:"numeric",timeZone:"UTC"})}</span>`;
+    }
+
+    if(!unique.length){
+      box.innerHTML=
+        "<div class='history-row'><small>No archived 1 Train notices found for the same month last year.</small></div>";
+      return;
+    }
+
+    // FULL history: show every unique notice from the same month last year.
+    box.innerHTML=unique.map(row=>`
+      <div class="history-row">
+        <div class="history-date">
+          ${historyDateLabel(row.date)} · ${row.status_label||"MTA alert"}
+        </div>
+        <div>${row.header||row.description||"Service notice"}</div>
+      </div>
+    `).join("");
+
+  }catch(e){
+    line.setAttribute("points","");
+    area.setAttribute("d","");
+    summary.textContent="History load failed";
+    box.innerHTML=
+      `<div class='history-row'><small>History unavailable: ${String(e.message||e)}</small></div>`;
+  }
+}
+
+async function updateWeather(){
+  try{
+    const url=
+      "https://api.open-meteo.com/v1/forecast" +
+      "?latitude=40.7831&longitude=-73.9712" +
+      "&current=temperature_2m,relative_humidity_2m" +
+      "&hourly=precipitation_probability,rain,snowfall" +
+      "&forecast_days=1&timezone=America%2FNew_York" +
+      "&temperature_unit=fahrenheit&precipitation_unit=inch";
+
+    const r=await fetch(url);
+    if(!r.ok) return;
+    const d=await r.json();
+
+    const currentHour=(d.current?.time||"").slice(0,13)+":00";
+    let i=(d.hourly?.time||[]).indexOf(currentHour);
+    if(i<0) i=0;
+
+    const temp=Number(d.current?.temperature_2m);
+    const humidity=Number(d.current?.relative_humidity_2m);
+    const precipProb=Number(d.hourly?.precipitation_probability?.[i] ?? 0);
+    const rainIn=Number(d.hourly?.rain?.[i] ?? 0);
+    const snowIn=Number(d.hourly?.snowfall?.[i] ?? 0);
+
+    // Open-Meteo has precipitation probability but not a direct snowfall probability.
+    // Use the same precip probability when snow is forecast; otherwise a cold-weather fallback.
+    const snowProb=snowIn>0
+      ? precipProb
+      : (temp<=34 ? Math.round(precipProb*0.5) : 0);
+
+    let flood="Low";
+    if(rainIn>=1.0) flood="High*";
+    else if(rainIn>=0.5) flood="Elevated*";
+    else if(rainIn>=0.20 && precipProb>=60) flood="Moderate*";
+
+    weatherState={
+      temp:Number.isFinite(temp)?temp:null,
+      humidity:Number.isFinite(humidity)?humidity:null,
+      rain:Number.isFinite(precipProb)?Math.round(precipProb):null,
+      snow:Number.isFinite(snowProb)?Math.round(snowProb):null,
+      flood
+    };
+
+    renderEnvironment();
+  }catch{}
+}
+
+function renderOutlook(){
+  const snap=tripSnapshots.get(selectedTrip);
+  const hint=document.getElementById("outlookHint");
+  const info=document.getElementById("outlookInfo");
+
+  if(!selectedTrip || !snap){
+    hint.hidden=false; info.hidden=true; return;
+  }
+
+  const now=Date.now()/1000;
+  const times=snap.times;
+  const t0=times["127N"];
+  const t1=times["117N"];
+
+  if(!t1){
+    hint.hidden=false; info.hidden=true; return;
+  }
+
+  hint.hidden=true; info.hidden=false;
+
+  let stops=0;
+  for(const id of IDS){
+    const t=times[id+"N"];
+    if(t && t>=now) stops++;
+  }
+
+  // Uncertainty grows with remaining stops.
+  const sigma=Math.max(60,45+12*stops);
+  const p=normalCDF(120,sigma);
+  document.getElementById("onTimeProb").textContent=(p*100).toFixed(0)+"%";
+
+  // Approximate full route distance Times Sq -> Columbia.
+  const miles=4.2;
+  const mph=(t0 && t1>t0) ? miles/((t1-t0)/3600) : null;
+  document.getElementById("speed").textContent=mph ? mph.toFixed(1) : "--";
+
+  // Illustrative marginal comparison vs one gasoline car.
+  const saved=miles*(0.40-0.10);
+  document.getElementById("carbon").textContent=saved.toFixed(2);
+
+  const offsets=[-4,-3,-2,-1,0,1,2,3,4];
+  const w=offsets.map(m=>Math.exp(-0.5*Math.pow((m*60)/sigma,2)));
+  const max=Math.max(...w);
+  w.forEach((v,i)=>{
+    document.getElementById("d"+i).style.height=(6+54*v/max)+"px";
+  });
+
+  renderEnvironment();
+}
+
+
+function eventTime(s){
+  return n(s.departure?.time ?? s.arrival?.time);
+}
+
+function saveSnapshot(u){
+  const tripId=u.trip?.tripId||"";
+  if(!tripId) return;
+
+  // Merge instead of replace:
+  // MTA may remove already-passed stops such as 127N from later updates.
+  // Keeping old timestamps prevents overall journey progress from resetting.
+  const old=tripSnapshots.get(tripId);
+  const times=old ? {...old.times} : {};
+
+  for(const s of u.stopTimeUpdate||[]){
+    const t=eventTime(s);
+    if(t) times[s.stopId]=t;
+  }
+
+  tripSnapshots.set(tripId,{times});
+}
+
+
+function updateArrivalReminderUI(){
+  const btn=document.getElementById("arrivalReminderBtn");
+  const status=document.getElementById("arrivalReminderStatus");
+  if(!btn || !status) return;
+
+  btn.textContent=arrivalReminderOn
+    ? "Arrival reminder: On"
+    : "Arrival reminder: Off";
+
+  if(arrivalReminderTriggered){
+    status.textContent="Arrival reminder sent.";
+  }else if(arrivalReminderOn){
+    status.textContent="Will remind you near 116 St–Columbia.";
+  }else{
+    status.textContent="Tap to remind you near 116 St–Columbia.";
+  }
+}
+
+function triggerArrivalReminder(){
+  if(arrivalReminderTriggered) return;
+  arrivalReminderTriggered=true;
+  updateArrivalReminderUI();
+
+  // Visible reminder always works while the page is active.
+  alert("Approaching 116 St–Columbia University");
+
+  // Optional voice cue when supported by the browser.
+  if("speechSynthesis" in window){
+    try{
+      speechSynthesis.cancel();
+      speechSynthesis.speak(
+        new SpeechSynthesisUtterance(
+          "Approaching 116th Street Columbia University."
+        )
+      );
+    }catch{}
+  }
+}
+
+function checkArrivalReminder(columbiaTime,nextId){
+  if(
+    !arrivalReminderOn ||
+    arrivalReminderTriggered ||
+    !selectedTrip ||
+    arrivalReminderTrip!==selectedTrip
+  ) return;
+
+  const now=Date.now()/1000;
+  const remain=columbiaTime ? columbiaTime-now : Infinity;
+
+  // Minimal trigger: Columbia is next stop OR ETA is within 2 minutes.
+  if(nextId==="117" || remain<=120){
+    triggerArrivalReminder();
+  }
+}
+
+function renderSelected(){
+  const snap=tripSnapshots.get(selectedTrip);
+  const hint=document.getElementById("selectedHint");
+  const info=document.getElementById("selectedInfo");
+
+  if(!selectedTrip || !snap){
+    hint.hidden=false;
+    info.hidden=true;
+    return;
+  }
+
+  hint.hidden=true;
+  info.hidden=false;
+
+  const now=Date.now()/1000;
+  const times=snap.times;
+
+  // First future northbound stop from 34 St through Columbia.
+  let nextIndex=-1;
+  let nextTime=null;
+
+  for(let i=0;i<TRACK_IDS.length;i++){
+    const t=times[TRACK_IDS[i]+"N"];
+    if(t && t>=now){
+      nextIndex=i;
+      nextTime=t;
+      break;
+    }
+  }
+
+  const columbiaTime=times["117N"];
+  const timesSqTime=times["127N"];
+
+  if(nextIndex>=0){
+    const nextId=TRACK_IDS[nextIndex];
+    const prevId=nextIndex>0 ? TRACK_IDS[nextIndex-1] : null;
+
+    // Use the previous stop timestamp if present.
+    // If MTA has already removed it, estimate one leg using the next leg duration,
+    // falling back to 120 s.
+    let prevTime=prevId ? times[prevId+"N"] : null;
+
+    if(!prevTime || prevTime>=nextTime){
+      const afterId=TRACK_IDS[nextIndex+1];
+      const afterTime=afterId ? times[afterId+"N"] : null;
+      const leg=afterTime && afterTime>nextTime
+        ? Math.min(240,Math.max(60,afterTime-nextTime))
+        : 120;
+      prevTime=nextTime-leg;
+    }
+
+    const p=clamp01((now-prevTime)/(nextTime-prevTime));
+
+    document.getElementById("nextStop").textContent=NAME[nextId]||nextId;
+    document.getElementById("nextRemain").textContent=fmtRemain(nextTime-now);
+    document.getElementById("nextBar").style.width=(p*100).toFixed(0)+"%";
+
+    // Upcoming station arrivals through Columbia, including the next stop.
+    const segmentIndex=IDS.indexOf(nextId);
+    const stops=segmentIndex>=0 ? IDS.length-segmentIndex : IDS.length;
+    document.getElementById("stopsRemain").textContent=stops;
+  }else{
+    document.getElementById("nextStop").textContent="--";
+    document.getElementById("nextRemain").textContent="--";
+    document.getElementById("nextBar").style.width="0%";
+    document.getElementById("stopsRemain").textContent="0";
+  }
+
+  checkArrivalReminder(
+    columbiaTime,
+    nextIndex>=0 ? TRACK_IDS[nextIndex] : null
+  );
+
+  if(columbiaTime){
+    document.getElementById("columbiaETA").textContent=
+      new Date(columbiaTime*1000).toLocaleTimeString([],{
+        hour:"2-digit",minute:"2-digit"
+      });
+
+    document.getElementById("columbiaRemain").textContent=
+      fmtRemain(columbiaTime-now);
+
+    // Overall Times Sq -> Columbia progress.
+    let journey=0;
+    if(timesSqTime && columbiaTime>timesSqTime){
+      journey=clamp01((now-timesSqTime)/(columbiaTime-timesSqTime));
+    }
+    document.getElementById("journeyBar").style.width=
+      (journey*100).toFixed(0)+"%";
+  }else{
+    document.getElementById("columbiaETA").textContent="--";
+    document.getElementById("columbiaRemain").textContent="--";
+    document.getElementById("journeyBar").style.width="0%";
+  }
+}
+
+function stationY(stopId){
+  const i=IDS.indexOf(stopId);
+  if(i<0) return null;
+  // Columbia at top, Times Sq at bottom.
+  return 32 + (IDS.length-1-i)*42;
+}
+
+function trainTrackPosition(v){
+  if(!v || v.trip?.routeId!=="1" || !v.stopId) return null;
+
+  const dir=v.stopId.slice(-1);
+  const stop=v.stopId.slice(0,-1);
+  const seq=dir==="N" ? IDS : dir==="S" ? [...IDS].reverse() : null;
+  if(!seq) return null;
+
+  const i=seq.indexOf(stop);
+  if(i<0) return null;
+
+  const status=v.currentStatus ?? 2;
+  const yStop=stationY(stop);
+
+  // STOPPED_AT
+  if(status===1){
+    return {
+      tripId:v.trip?.tripId || "",
+      dir,
+      stopped:true,
+      stop,
+      y:yStop
+    };
+  }
+
+  // For INCOMING_AT / IN_TRANSIT_TO, stop_id is the next stop.
+  // If it is the first stop in this directional segment, the train
+  // has not entered Times Sq–Columbia yet.
+  if(i===0) return null;
+
+  const prev=seq[i-1];
+  const yPrev=stationY(prev);
+
+  return {
+    tripId:v.trip?.tripId || "",
+    dir,
+    stopped:false,
+    prev,
+    stop,
+    y:(yPrev+yStop)/2
+  };
+}
+
+function renderTrack(active){
+  const svg=document.getElementById("trackSvg");
+  const trackX=102;
+
+  const positions=active
+    .map(v=>trainTrackPosition(v))
+    .filter(Boolean);
+
+  const selected=positions.find(p=>p.tripId===selectedTrip) || null;
+
+  let s="";
+  s+=`<line x1="156" y1="18" x2="156" y2="468"
+    stroke="#eeeeef" stroke-width="1"/>`;
+
+  // Base line / segments.
+  for(let i=0;i<IDS.length-1;i++){
+    const a=IDS[i], b=IDS[i+1];
+    const y1=stationY(a), y2=stationY(b);
+
+    let chosen=false;
+    if(selected && !selected.stopped){
+      chosen=
+        (selected.prev===a && selected.stop===b) ||
+        (selected.prev===b && selected.stop===a);
+    }
+
+    s+=`<line x1="${trackX}" y1="${y1}" x2="${trackX}" y2="${y2}"
+      stroke="${chosen ? "#d9232e" : "#d7d7dc"}"
+      stroke-width="${chosen ? 8 : 4}"
+      stroke-linecap="round"/>`;
+  }
+
+  // Station dots and labels.
+  for(const id of [...IDS].reverse()){
+    const y=stationY(id);
+    const selectedStop=selected?.stopped && selected.stop===id;
+
+    s+=`<circle cx="${trackX}" cy="${y}" r="${selectedStop ? 8 : 5.5}"
+      fill="${selectedStop ? "#d9232e" : "#fff"}"
+      stroke="${selectedStop ? "#d9232e" : "#888"}"
+      stroke-width="2"/>`;
+
+    const important=id==="127" || id==="117";
+    s+=`<text x="180" y="${y+4}"
+      font-size="${important ? 13 : 11}"
+      font-weight="${important ? 700 : 400}"
+      fill="#222">${NAME[id]}</text>`;
+  }
+
+  // Train markers. Other trains are deliberately lighter.
+  positions.forEach((p,index)=>{
+    const chosen=p.tripId===selectedTrip;
+    const x=p.dir==="N" ? 78 : 126;
+    const opacity=chosen ? 1 : 0.24;
+
+    s+=`<circle cx="${x}" cy="${p.y}" r="${chosen ? 11 : 8}"
+      fill="#d9232e" opacity="${opacity}"
+      stroke="${chosen ? "#111" : "none"}"
+      stroke-width="${chosen ? 2 : 0}"/>`;
+
+    s+=`<text x="${x}" y="${p.y+3.5}" text-anchor="middle"
+      font-size="${chosen ? 10 : 8}" font-weight="700"
+      fill="#fff" opacity="${chosen ? 1 : 0.75}">1</text>`;
+  });
+
+  // Direction labels.
+  s+=`<text x="54" y="486" font-size="10" fill="#777">↑ Uptown</text>`;
+  s+=`<text x="112" y="486" font-size="10" fill="#777">↓ Downtown</text>`;
+
+  svg.innerHTML=s;
+}
+
+function selectTrain(i){
+  const newTrip=currentTrips[i]?.tripId || null;
+
+  if(newTrip!==selectedTrip){
+    arrivalReminderTriggered=false;
+  }
+
+  selectedTrip=newTrip;
+
+  // Automatically enable arrival reminder after choosing a train.
+  arrivalReminderOn=!!selectedTrip;
+  arrivalReminderTrip=selectedTrip || null;
+
+  updateArrivalReminderUI();
+
+  for(let j=0;j<3;j++){
+    document.getElementById("row"+j)
+      .classList.toggle("selected",j===i && !!selectedTrip);
+  }
+
+  renderTrack(currentActive);
+  renderSelected();
+  renderOutlook();
+  comfortExpectation();
+}
+
+async function update(){
+  try{
+    const r=await fetch(FEED);
+    if(!r.ok) return;
+
+    const feed=FeedMessage.decode(new Uint8Array(await r.arrayBuffer()));
+    const now=Date.now()/1000;
+    const found=[];
+    const active=[];
+    mtaAlerts=[];
+
+    for(const e of feed.entity){
+      const u=e.tripUpdate;
+
+      if(u && u.trip?.routeId==="1"){
+        saveSnapshot(u);
+        let start=null,end=null;
+
+        for(const s of u.stopTimeUpdate||[]){
+          if(s.stopId==="127N")
+            start=n(s.departure?.time ?? s.arrival?.time);
+
+          if(s.stopId==="117N")
+            end=n(s.arrival?.time ?? s.departure?.time);
+        }
+
+        if(start && end && start>=now-30 && end>start){
+          found.push({
+            start,
+            tripId:u.trip?.tripId || "",
+            wait:Math.max(0,Math.round((start-now)/60)),
+            arrive:Math.max(0,Math.round((end-now)/60)),
+            ride:Math.round((end-start)/60)
+          });
+        }
+      }
+
+      if(e.alert) mtaAlerts.push(e.alert);
+
+      if(e.vehicle?.trip?.tripId){
+        vehicleState.set(e.vehicle.trip.tripId,e.vehicle);
+      }
+
+      const pos=trainTrackPosition(e.vehicle);
+      if(pos) active.push(e.vehicle);
+    }
+
+    found.sort((a,b)=>a.start-b.start);
+
+    currentTrips=[found[0]||null,found[1]||null,found[2]||null];
+
+    for(let i=0;i<3;i++){
+      const t=found[i];
+      document.getElementById("w"+i).textContent=t ? t.wait : "--";
+      document.getElementById("a"+i).textContent=t ? t.arrive : "--";
+      document.getElementById("r"+i).textContent=t ? t.ride : "--";
+      document.getElementById("row"+i)
+        .classList.toggle("selected",!!t && t.tripId===selectedTrip);
+    }
+
+    document.getElementById("count").textContent=active.length;
+    currentActive=active;
+    renderTrack(currentActive);
+
+    renderSelected();
+    renderOutlook();
+    comfortExpectation();
+
+  }catch{}
+}
+
+document.getElementById("refresh").addEventListener("click",()=>{
+  update();
+  updateWeather();
+  updateHistory();
+});
+for(let i=0;i<3;i++){
+  document.getElementById("row"+i).addEventListener("click",()=>selectTrain(i));
+}
+
+document.getElementById("arrivalReminderBtn").addEventListener("click",()=>{
+  if(!selectedTrip) return;
+
+  arrivalReminderOn=!arrivalReminderOn;
+  arrivalReminderTrip=arrivalReminderOn ? selectedTrip : null;
+  arrivalReminderTriggered=false;
+  updateArrivalReminderUI();
+
+  if(arrivalReminderOn) renderSelected();
+});
+
+updateArrivalReminderUI();
+renderTrack([]);
+update();
+updateWeather();
+updateHistory();
+setInterval(update,30000);
+setInterval(updateWeather,600000);
+setInterval(updateHistory,3600000);
+setInterval(()=>{renderSelected();renderOutlook();},1000);
+</script>
+
+</body>
+</html>
