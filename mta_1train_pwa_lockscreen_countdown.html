@@ -514,6 +514,10 @@ async function updateLockscreenCountdown(){
 
   try{
     const reg=await navigator.serviceWorker.ready;
+    const oldNotifications=await reg.getNotifications({
+  tag:"mta1-lockscreen-countdown"
+});
+oldNotifications.forEach(n=>n.close());
     await reg.showNotification(`1 Train → ${c.destinationShort}`,{
       body:`${body} · ETA ${eta}`,
       tag:"mta1-lockscreen-countdown",
