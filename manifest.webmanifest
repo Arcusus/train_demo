@@ -1,12 +1,12 @@
 {
   "name": "1 Train Live",
   "short_name": "1 Train",
-  "id": "./mta_1train_pwa_offline_reminder.html",
-  "start_url": "./mta_1train_pwa_offline_reminder.html",
+  "id": "./mta_1train_pwa_lockscreen_countdown.html",
+  "start_url": "./mta_1train_pwa_lockscreen_countdown.html",
   "display": "standalone",
   "background_color": "#f5f5f7",
   "theme_color": "#d9232e",
-  "description": "NYC 1 Train live trip and local arrival reminder.",
+  "description": "NYC 1 Train live trip with lock-screen minute countdown.",
   "icons": [
     {
       "src": "./icon-192.png",

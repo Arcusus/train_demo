@@ -1,6 +1,6 @@
-const CACHE="mta1-pwa-v1";
+const CACHE="mta1-pwa-lockscreen-v1";
 const APP_SHELL=[
-  "./mta_1train_pwa_offline_reminder.html",
+  "./mta_1train_pwa_lockscreen_countdown.html",
   "./manifest.webmanifest",
   "./icon-192.png",
   "./icon-512.png"
@@ -61,7 +61,7 @@ self.addEventListener("notificationclick",event=>{
       for(const client of list){
         if("focus" in client) return client.focus();
       }
-      return clients.openWindow("./mta_1train_pwa_offline_reminder.html");
+      return clients.openWindow("./mta_1train_pwa_lockscreen_countdown.html");
     })
   );
 });
