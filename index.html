@@ -122,6 +122,10 @@ button{width:100%;padding:12px;border:0;border-radius:12px;background:#111;color
     <button id="arrivalReminderBtn" type="button">Arrival reminder: Off</button>
     <small id="arrivalReminderStatus">Tap to remind you near 116 St–Columbia.</small><br>
 
+    <button id="stationAnnouncementsBtn" type="button">Station announcements: Off</button>
+    <small id="stationAnnouncementsStatus">Select a train to hear every stop.</small><br>
+    <button id="stationVoiceTestBtn" type="button">Test station voice</button>
+
     <small>Offline estimate continues from the last MTA snapshot; corrected when data returns.</small>
   </div>
 </div>
@@ -290,6 +294,19 @@ const NAME={
   "117":"116 St–Columbia",
   "116":"125 St"
 };
+const STATION_SPEECH={
+  "127":"Times Square, 42nd Street",
+  "126":"50th Street",
+  "125":"59th Street, Columbus Circle",
+  "124":"66th Street, Lincoln Center",
+  "123":"72nd Street",
+  "122":"79th Street",
+  "121":"86th Street",
+  "120":"96th Street",
+  "119":"103rd Street",
+  "118":"110th Street",
+  "117":"116th Street, Columbia University"
+};
 
 const ROUTES={
   N:{
@@ -349,6 +366,10 @@ let arrivalReminderOn=false;
 let arrivalReminderTrip=null;
 let arrivalReminderTriggered=false;
 let originReminderTriggered=false;
+let stationAnnouncementsOn=false;
+let announcedStationIds=new Set();
+let lastAnnouncedStation=null;
+let activeSpeechUtterance=null;
 
 // Calibrated from current observed NYC traffic:
  // Valhalla 13 min vs Apple Maps 22 min -> ~1.69.
@@ -397,10 +418,14 @@ function saveOfflineTripState(){
         routeMode,
         selectedTrip,
         times:snap.times,
+        arrivalTimes:snap.arrivalTimes,
         arrivalReminderOn,
         arrivalReminderTrip,
         arrivalReminderTriggered,
-        originReminderTriggered
+        originReminderTriggered,
+        stationAnnouncementsOn,
+        announcedStationIds:[...announcedStationIds],
+        lastAnnouncedStation
       })
     );
   }catch{}
@@ -424,11 +449,19 @@ function restoreOfflineTripState(){
     }
 
     selectedTrip=s.selectedTrip;
-    tripSnapshots.set(selectedTrip,{times:s.times||{}});
+    tripSnapshots.set(selectedTrip,{
+      times:s.times||{},
+      arrivalTimes:s.arrivalTimes||{}
+    });
     arrivalReminderOn=s.arrivalReminderOn!==false;
     arrivalReminderTrip=selectedTrip;
     arrivalReminderTriggered=!!s.arrivalReminderTriggered;
     originReminderTriggered=!!s.originReminderTriggered;
+    stationAnnouncementsOn=s.stationAnnouncementsOn!==false;
+    announcedStationIds=new Set(
+      Array.isArray(s.announcedStationIds) ? s.announcedStationIds : []
+    );
+    lastAnnouncedStation=s.lastAnnouncedStation || null;
   }catch{}
 }
 
@@ -1544,17 +1577,170 @@ function saveSnapshot(u){
   // Keeping old timestamps prevents overall journey progress from resetting.
   const old=tripSnapshots.get(tripId);
   const times=old ? {...old.times} : {};
+  const arrivalTimes=old ? {...old.arrivalTimes} : {};
 
   for(const s of u.stopTimeUpdate||[]){
     const t=eventTime(s);
     if(t) times[s.stopId]=t;
+
+    const arrival=n(s.arrival?.time ?? s.departure?.time);
+    if(arrival) arrivalTimes[s.stopId]=arrival;
   }
 
-  tripSnapshots.set(tripId,{times});
+  tripSnapshots.set(tripId,{times,arrivalTimes});
 
   if(tripId===selectedTrip){
     saveOfflineTripState();
   }
+}
+
+
+function updateStationAnnouncementsUI(){
+  const btn=document.getElementById("stationAnnouncementsBtn");
+  const status=document.getElementById("stationAnnouncementsStatus");
+  if(!btn || !status) return;
+
+  btn.textContent=stationAnnouncementsOn
+    ? "Station announcements: On"
+    : "Station announcements: Off";
+
+  if(!("speechSynthesis" in window)){
+    status.textContent="Spoken announcements are not supported in this browser.";
+  }else if(!selectedTrip){
+    status.textContent="Select a train to hear every stop.";
+  }else if(!stationAnnouncementsOn){
+    status.textContent="Tap to turn on spoken station announcements.";
+  }else if(lastAnnouncedStation){
+    status.textContent=`Last announced: ${NAME[lastAnnouncedStation]}. Keep this screen open.`;
+  }else{
+    status.textContent="On · Keep this screen open to hear every stop.";
+  }
+}
+
+function speakMessage(text,events={}){
+  if(!("speechSynthesis" in window)) return false;
+
+  try{
+    const utterance=new SpeechSynthesisUtterance(text);
+    utterance.lang="en-US";
+    utterance.rate=0.95;
+    utterance.pitch=1;
+
+    const voices=speechSynthesis.getVoices();
+    utterance.voice=
+      voices.find(voice=>voice.lang==="en-US" && voice.localService) ||
+      voices.find(voice=>voice.lang.startsWith("en")) ||
+      null;
+
+    const release=()=>{
+      if(activeSpeechUtterance===utterance){
+        activeSpeechUtterance=null;
+      }
+    };
+    utterance.onstart=()=>events.onstart?.();
+    utterance.onend=event=>{
+      release();
+      events.onend?.(event);
+    };
+    utterance.onerror=event=>{
+      release();
+      events.onerror?.(event);
+    };
+    activeSpeechUtterance=utterance;
+
+    if(speechSynthesis.paused) speechSynthesis.resume();
+
+    if(speechSynthesis.speaking || speechSynthesis.pending){
+      speechSynthesis.cancel();
+      setTimeout(()=>{
+        if(activeSpeechUtterance===utterance){
+          speechSynthesis.speak(utterance);
+        }
+      },75);
+    }else{
+      speechSynthesis.speak(utterance);
+    }
+
+    return true;
+  }catch{
+    activeSpeechUtterance=null;
+    return false;
+  }
+}
+
+function speakStation(stopId){
+  return speakMessage(
+    `This is ${STATION_SPEECH[stopId] || NAME[stopId] || stopId}.`
+  );
+}
+
+function resetStationAnnouncementState(){
+  announcedStationIds.clear();
+  lastAnnouncedStation=null;
+  if(!selectedTrip) return;
+
+  const snap=tripSnapshots.get(selectedTrip);
+  if(!snap) return;
+
+  const c=routeConfig();
+  const now=Date.now()/1000;
+  const vehicle=vehicleState.get(selectedTrip);
+  const live=trainTrackPosition(vehicle);
+  const liveStopped=
+    live?.stopped && live.dir===c.suffix ? live.stop : null;
+
+  for(const stopId of c.path){
+    const key=stopId+c.suffix;
+    const arrival=snap.arrivalTimes?.[key] || snap.times?.[key];
+    if(stopId!==liveStopped && arrival && arrival<now-45){
+      announcedStationIds.add(stopId);
+    }
+  }
+}
+
+function checkStationAnnouncement(snap){
+  if(
+    !stationAnnouncementsOn ||
+    !selectedTrip ||
+    document.visibilityState!=="visible" ||
+    !("speechSynthesis" in window)
+  ) return;
+
+  const c=routeConfig();
+  const now=Date.now()/1000;
+  const vehicle=vehicleState.get(selectedTrip);
+  const vehicleTime=n(vehicle?.timestamp);
+  const live=vehicleTime && Math.abs(now-vehicleTime)<=90
+    ? trainTrackPosition(vehicle)
+    : null;
+
+  let stopId=
+    live?.stopped && live.dir===c.suffix && c.path.includes(live.stop)
+      ? live.stop
+      : null;
+
+  if(!stopId){
+    for(const id of c.path){
+      const key=id+c.suffix;
+      const arrival=snap.arrivalTimes?.[key] || snap.times?.[key];
+      if(
+        arrival &&
+        arrival<=now &&
+        now-arrival<=75 &&
+        !announcedStationIds.has(id)
+      ){
+        stopId=id;
+      }
+    }
+  }
+
+  if(!stopId || announcedStationIds.has(stopId)) return;
+  if(!speakStation(stopId)) return;
+
+  announcedStationIds.add(stopId);
+  lastAnnouncedStation=stopId;
+  saveOfflineTripState();
+  updateStationAnnouncementsUI();
 }
 
 
@@ -1608,14 +1794,9 @@ function triggerOriginReminder(){
   );
 
   if(document.visibilityState==="visible" && "speechSynthesis" in window){
-    try{
-      speechSynthesis.cancel();
-      speechSynthesis.speak(
-        new SpeechSynthesisUtterance(
-          `Your 1 train is arriving at ${c.originName} in about one minute.`
-        )
-      );
-    }catch{}
+    speakMessage(
+      `Your 1 train is arriving at ${c.originName} in about one minute.`
+    );
   }
 }
 
@@ -1638,14 +1819,7 @@ function triggerArrivalReminder(){
   }
 
   if(document.visibilityState==="visible" && "speechSynthesis" in window){
-    try{
-      speechSynthesis.cancel();
-      speechSynthesis.speak(
-        new SpeechSynthesisUtterance(
-          `Approaching ${c.destinationSpeech}.`
-        )
-      );
-    }catch{}
+    speakMessage(`Approaching ${c.destinationSpeech}.`);
   }
 }
 
@@ -1805,6 +1979,7 @@ function renderSelected(){
   }
 
   checkArrivalReminder(originTime,destinationTime);
+  checkStationAnnouncement(snap);
 
   if(destinationTime){
     document.getElementById("columbiaETA").textContent=
@@ -2022,8 +2197,9 @@ function renderTrack(active){
 
 function selectTrain(i){
   const newTrip=currentTrips[i]?.tripId || null;
+  const tripChanged=newTrip!==selectedTrip;
 
-  if(newTrip!==selectedTrip){
+  if(tripChanged){
     arrivalReminderTriggered=false;
     originReminderTriggered=false;
   }
@@ -2033,6 +2209,8 @@ function selectTrain(i){
   // Automatically enable arrival reminder after choosing a train.
   arrivalReminderOn=!!selectedTrip;
   arrivalReminderTrip=selectedTrip || null;
+  stationAnnouncementsOn=!!selectedTrip;
+  if(tripChanged) resetStationAnnouncementState();
   lastLockscreenMinute=null;
   lastLockscreenPhase=null;
 
@@ -2043,6 +2221,7 @@ function selectTrain(i){
 
   saveOfflineTripState();
   updateArrivalReminderUI();
+  updateStationAnnouncementsUI();
 
   for(let j=0;j<3;j++){
     document.getElementById("row"+j)
@@ -2159,6 +2338,7 @@ function updateRouteUI(){
   );
 
   updateArrivalReminderUI();
+  updateStationAnnouncementsUI();
 }
 
 function switchRoute(){
@@ -2170,6 +2350,9 @@ function switchRoute(){
   arrivalReminderTrip=null;
   arrivalReminderTriggered=false;
   originReminderTriggered=false;
+  stationAnnouncementsOn=false;
+  announcedStationIds.clear();
+  lastAnnouncedStation=null;
   lastLockscreenMinute=null;
   lastLockscreenPhase=null;
   selectedProgressMax.clear();
@@ -2226,6 +2409,42 @@ document.getElementById("arrivalReminderBtn").addEventListener("click",()=>{
   updateArrivalReminderUI();
 
   if(arrivalReminderOn) renderSelected();
+});
+
+document.getElementById("stationAnnouncementsBtn").addEventListener("click",()=>{
+  if(!selectedTrip) return;
+
+  stationAnnouncementsOn=!stationAnnouncementsOn;
+  if(!stationAnnouncementsOn && "speechSynthesis" in window){
+    speechSynthesis.cancel();
+    activeSpeechUtterance=null;
+  }
+
+  saveOfflineTripState();
+  updateStationAnnouncementsUI();
+  if(stationAnnouncementsOn) renderSelected();
+});
+
+document.getElementById("stationVoiceTestBtn").addEventListener("click",()=>{
+  const status=document.getElementById("stationAnnouncementsStatus");
+  const stopId=routeConfig().origin;
+  const name=NAME[stopId];
+
+  if(speakMessage(`This is ${STATION_SPEECH[stopId] || name}.`,{
+    onstart:()=>{
+      status.textContent=`Playing test voice: ${name}.`;
+    },
+    onend:()=>{
+      status.textContent=`Voice test finished: ${name}.`;
+    },
+    onerror:event=>{
+      status.textContent=`Voice test failed${event.error ? `: ${event.error}` : "."}`;
+    }
+  })){
+    status.textContent=`Starting voice test: ${name}.`;
+  }else{
+    status.textContent="This browser does not support spoken announcements. Try Safari or Chrome.";
+  }
 });
 
 restoreOfflineTripState();

@@ -1,4 +1,4 @@
-const CACHE="mta1-pwa-v20260822-2";
+const CACHE="mta1-pwa-v20260828-1";
 
 const STATIC_SHELL=[
   "./manifest.webmanifest",
