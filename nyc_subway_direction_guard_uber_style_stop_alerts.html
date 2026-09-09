@@ -1,0 +1,2347 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>NYC Subway Direction Guard</title>
+<link rel="manifest" href="subway-direction-guard.webmanifest">
+<meta name="theme-color" content="#000000">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<script src="https://cdn.jsdelivr.net/npm/protobufjs@7.5.4/dist/protobuf.min.js"></script>
+<style>
+:root{
+  --bg:#f3f3f1;--surface:#fff;--ink:#000;--muted:#6b6b6b;--line:#e7e7e4;
+  --mta:#ee352e;--safe:#0e8345;--safe-bg:#e9f7ef;--danger:#c5221f;--danger-bg:#fff0ef;
+  --shadow:0 10px 30px rgba(0,0,0,.07);--radius:24px;
+}
+*{box-sizing:border-box}
+html{background:var(--bg)}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Helvetica Neue",Arial,sans-serif;-webkit-font-smoothing:antialiased}
+button{font:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.app{max-width:620px;margin:auto;min-height:100vh;padding:calc(14px + env(safe-area-inset-top)) 16px calc(34px + env(safe-area-inset-bottom))}
+.topbar{display:flex;align-items:center;justify-content:space-between;margin:2px 2px 16px}
+.brand-kicker{font-size:11px;font-weight:800;letter-spacing:.13em;text-transform:uppercase;color:var(--muted)}
+.brand{font-size:28px;font-weight:800;letter-spacing:-.04em}
+.icon-btn{width:46px;height:46px;border:0;border-radius:50%;background:var(--surface);font-size:22px;box-shadow:0 1px 0 rgba(0,0,0,.04)}
+
+.direction-hero{background:var(--surface);border-radius:30px;padding:22px;box-shadow:var(--shadow);margin-bottom:14px}
+.hero-top{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.line-badge{width:48px;height:48px;border-radius:50%;display:grid;place-items:center;background:var(--mta);color:#fff;font-size:28px;font-weight:800}
+.status-chip{padding:8px 11px;border-radius:999px;background:var(--safe-bg);color:var(--safe);font-size:12px;font-weight:800}
+.direction-word{font-size:50px;line-height:.94;font-weight:900;letter-spacing:-.055em;margin-top:22px}
+.direction-sub{font-size:18px;font-weight:650;color:#333;margin-top:6px}
+.route-brief{display:grid;grid-template-columns:22px 1fr 44px;gap:10px;align-items:stretch;margin:24px 0 18px}
+.route-axis{display:flex;flex-direction:column;align-items:center;padding:3px 0}
+.route-dot{width:10px;height:10px;border:3px solid #111;border-radius:50%;background:#fff}
+.route-axis-line{width:2px;flex:1;background:#111;margin:4px 0}
+.route-dest-dot{width:12px;height:12px;border-radius:2px;background:#111}
+.route-text{display:flex;flex-direction:column;justify-content:space-between;gap:17px}
+.route-label-sm{font-size:12px;color:var(--muted);font-weight:650}
+.route-place{font-size:18px;font-weight:800;letter-spacing:-.02em}
+.swap-btn{align-self:center;width:44px;height:44px;border:0;border-radius:50%;background:#f1f1ef;font-size:20px}
+.sign-check{background:#f6f6f4;border-radius:18px;padding:14px 15px;margin-top:12px}
+.sign-row{display:flex;gap:10px;align-items:flex-start;font-size:14px;line-height:1.35}
+.sign-row+ .sign-row{margin-top:11px;padding-top:11px;border-top:1px solid #e5e5e1}
+.sign-icon{font-size:16px;width:20px;text-align:center}.sign-good{color:var(--safe)}.sign-bad{color:var(--danger)}
+.sign-copy{color:#111}.sign-copy b{font-weight:850}
+.guard-actions{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:13px}
+.primary,.secondary,.danger-btn{border:0;border-radius:14px;padding:14px 12px;font-weight:800;min-height:48px}
+.primary{background:#000;color:#fff}.secondary{background:#efefed;color:#111}.danger-btn{background:var(--danger-bg);color:var(--danger)}
+.platform-status{margin-top:11px;font-size:13px;color:var(--muted);min-height:18px}
+.platform-status.safe{color:var(--safe);font-weight:750}.platform-status.danger{color:var(--danger);font-weight:750}
+
+.card{background:var(--surface);border-radius:var(--radius);padding:18px;margin-top:12px}
+.card-head{display:flex;align-items:end;justify-content:space-between;gap:10px;margin-bottom:8px}
+.card-title{font-size:20px;font-weight:850;letter-spacing:-.025em}.card-sub{font-size:12px;color:var(--muted)}
+.route-head{display:flex;align-items:center;justify-content:space-between;gap:10px}.route-head button{width:auto}
+#routeLabel{font-size:13px;color:var(--muted);font-weight:650}
+
+.train-list{padding:6px 0 0}.row{display:grid;grid-template-columns:74px 1fr auto;align-items:center;gap:9px;padding:15px 6px;border-top:1px solid var(--line);border-radius:14px;cursor:pointer}
+.row:first-child{border-top:0}.row.selected{background:#f1f1ef}.num{font-size:31px;font-weight:850;font-variant-numeric:tabular-nums;letter-spacing:-.04em}
+.train-main{font-size:15px;font-weight:800}.train-meta{font-size:12px;color:var(--muted);margin-top:3px}.train-chevron{font-size:20px;color:#888}
+
+.board-card{background:#000;color:#fff}.board-card .card-sub,.board-card small{color:#bdbdbd}.board-eyebrow{font-size:11px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#a7a7a7}
+.board-count{font-size:43px;font-weight:900;letter-spacing:-.05em;margin:8px 0 3px;font-variant-numeric:tabular-nums}.board-direction{font-size:16px;font-weight:800;margin-bottom:16px}
+.metric{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-top:1px solid rgba(127,127,127,.18)}
+.board-card .metric{border-color:#252525}.metric b{font-weight:800}.mono{font-variant-numeric:tabular-nums}
+.bar{height:7px;background:#2d2d2d;border-radius:99px;overflow:hidden;margin:2px 0 10px}.fill{height:100%;width:0;background:#fff;transition:width .8s linear}
+.board-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}.board-actions button{border:0;border-radius:13px;padding:13px 9px;font-weight:800}.board-actions .light{background:#fff;color:#000}.board-actions .dark{background:#262626;color:#fff}
+
+.track-shell{overflow:hidden;padding-top:8px}#trackSvg{width:100%;height:auto;display:block;max-height:430px}
+.track-note{font-size:12px;color:var(--muted);line-height:1.4;margin-top:4px}
+
+.detail-fold{margin-top:12px;background:var(--surface);border-radius:var(--radius);overflow:hidden}.detail-fold>summary{list-style:none;padding:18px;font-size:16px;font-weight:850;cursor:pointer}.detail-fold>summary::-webkit-details-marker{display:none}.detail-fold>summary:after{content:"＋";float:right;color:#777}.detail-fold[open]>summary:after{content:"−"}.details-inner{padding:0 16px 16px}.details-inner>.card,.details-inner>.comfort-card{box-shadow:none;border:1px solid var(--line);margin-top:10px}
+small{color:var(--muted)}
+.outlook-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}.outlook-box{background:#f4f4f2;border-radius:14px;padding:11px}.outlook-value{font-size:20px;font-weight:850;font-variant-numeric:tabular-nums}.dist{display:flex;align-items:end;gap:3px;height:54px;margin-top:10px}.dist span{flex:1;background:#111;border-radius:3px 3px 0 0;opacity:.74}.dist-labels{display:flex;justify-content:space-between;color:var(--muted);font-size:11px}.env-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:6px;margin-top:12px}.env-item{display:flex;justify-content:space-between;gap:8px;padding:7px 0;border-top:1px solid var(--line)}.env-item[hidden]{display:none}.notice{margin-top:10px;padding:12px;border-radius:14px;background:#f4f4f2}.history-fold{margin-top:12px}.history-fold summary{cursor:pointer;font-weight:800}.history-fold summary small{font-weight:400;margin-left:6px}.history-row{padding:8px 0;border-top:1px solid var(--line)}.history-date{font-size:12px;color:var(--muted)}.history-chart{margin:10px 0 6px}.history-chart svg{width:100%;height:70px;display:block}.history-line{fill:none;stroke:#111;stroke-width:2}.history-area{fill:#111;opacity:.06}.history-axis{display:flex;justify-content:space-between;font-size:11px;color:var(--muted)}
+.comfort-card{background:var(--surface);border-radius:var(--radius);padding:16px;margin-top:12px}.comfort-top{display:flex;justify-content:space-between;align-items:end;gap:12px}.comfort-score{font-size:34px;font-weight:850;font-variant-numeric:tabular-nums}.comfort-bar{height:9px;background:#eee;border-radius:8px;overflow:hidden;margin:10px 0 6px}.comfort-fill{height:100%;width:0;background:#111;transition:width .6s linear}
+
+.safety-toast{position:fixed;left:50%;bottom:calc(18px + env(safe-area-inset-bottom));transform:translate(-50%,24px);width:min(92vw,560px);padding:17px 18px;border-radius:18px;background:#111;color:#fff;box-shadow:0 18px 45px rgba(0,0,0,.28);opacity:0;pointer-events:none;transition:.25s;z-index:50}.safety-toast.show{opacity:1;transform:translate(-50%,0)}.safety-toast.danger{background:#b42318}.toast-title{font-weight:900;font-size:16px}.toast-body{font-size:13px;margin-top:4px;line-height:1.35}
+@media(max-width:480px){.direction-word{font-size:46px}.guard-actions{grid-template-columns:1fr}.outlook-grid,.env-grid{grid-template-columns:1fr}.board-actions{grid-template-columns:1fr}.app{padding-left:12px;padding-right:12px}}
+
+
+/* Stop-by-stop multimodal alerts */
+.stop-alert-card{overflow:hidden}
+.stop-alert-top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.stop-alert-title{font-size:22px;font-weight:900;letter-spacing:-.03em}
+.stop-alert-state{font-size:12px;font-weight:850;padding:7px 10px;border-radius:999px;background:var(--safe-bg);color:var(--safe);white-space:nowrap}
+.mode-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:14px}
+.mode-btn{border:1px solid var(--line);background:#f6f6f4;color:#111;border-radius:14px;padding:11px 12px;text-align:left;font-size:13px;font-weight:800;min-height:46px}
+.mode-btn.on{background:#000;color:#fff;border-color:#000}.mode-btn.unsupported{opacity:.45}
+.mode-btn small{display:block;font-size:10px;margin-top:2px;color:inherit;opacity:.65;font-weight:650}
+.all-alerts-btn{width:100%;border:0;border-radius:15px;padding:14px 12px;background:#000;color:#fff;font-weight:900;margin-top:10px}
+.alert-support{font-size:11px;color:var(--muted);line-height:1.4;margin-top:9px}
+.stop-list{margin-top:14px;border-top:1px solid var(--line)}
+.stop-row{display:grid;grid-template-columns:24px 1fr auto;align-items:center;gap:10px;padding:11px 8px;border-bottom:1px solid var(--line);border-radius:12px;transition:.2s}
+.stop-row .stop-marker{width:12px;height:12px;border-radius:50%;border:3px solid #111;background:#fff;justify-self:center}
+.stop-row .stop-name{font-size:14px;font-weight:800}.stop-row .stop-eta{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.stop-row.passed{opacity:.4}.stop-row.passed .stop-marker{background:#111}
+.stop-row.next{background:#000;color:#fff;padding:13px 10px;margin:4px 0;box-shadow:0 7px 24px rgba(0,0,0,.16)}
+.stop-row.next .stop-marker{background:#fff;border-color:#fff;box-shadow:0 0 0 5px rgba(255,255,255,.16)}
+.stop-row.next .stop-eta{color:#d7d7d7}.stop-row.destination .stop-name:after{content:" · DESTINATION";font-size:9px;letter-spacing:.08em;color:var(--mta);font-weight:900}
+.stop-row.next.destination .stop-name:after{color:#ff9b96}
+.stop-row.arriving{animation:stopPulse 1s ease-in-out infinite;background:var(--mta);color:#fff}
+.stop-row.arriving .stop-marker{background:#fff;border-color:#fff}.stop-row.arriving .stop-eta{color:#fff}
+@keyframes stopPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.012)}}
+
+.alert-flash{position:fixed;inset:0;z-index:80;pointer-events:none;opacity:0;display:grid;place-items:center;background:rgba(0,0,0,.93);color:#fff;transition:opacity .18s}
+.alert-flash.show{opacity:1}.alert-flash.danger{background:rgba(197,34,31,.96)}
+.alert-flash-inner{width:min(88vw,520px);text-align:center;padding:24px}.alert-flash-kicker{font-size:13px;font-weight:900;letter-spacing:.14em;text-transform:uppercase;opacity:.75}
+.alert-flash-stop{font-size:42px;font-weight:950;letter-spacing:-.05em;line-height:1;margin-top:10px}.alert-flash-copy{font-size:16px;font-weight:700;line-height:1.35;margin-top:12px}
+@media(max-width:480px){.mode-grid{grid-template-columns:1fr}.alert-flash-stop{font-size:36px}}
+
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <div>
+      <div class="brand-kicker">NYC subway guard</div>
+      <div class="brand">Your trip</div>
+    </div>
+    <button id="refresh" class="icon-btn" type="button" aria-label="Refresh live subway data">↻</button>
+  </header>
+
+  <section class="direction-hero" id="directionHero">
+    <div class="hero-top">
+      <span class="line-badge">1</span>
+      <span class="status-chip" id="directionStatusChip">Correct direction</span>
+    </div>
+
+    <div class="direction-word" id="directionWord">UPTOWN</div>
+    <div class="direction-sub" id="directionQualifier">toward The Bronx</div>
+
+    <div class="route-brief">
+      <div class="route-axis"><span class="route-dot"></span><span class="route-axis-line"></span><span class="route-dest-dot"></span></div>
+      <div class="route-text">
+        <div><div class="route-label-sm">FROM</div><div class="route-place" id="heroOrigin">Times Sq–42 St</div></div>
+        <div><div class="route-label-sm">TO</div><div class="route-place" id="heroDestination">116 St–Columbia University</div></div>
+      </div>
+      <button id="swapRoute" class="swap-btn" type="button" aria-label="Switch start and destination">⇅</button>
+    </div>
+
+    <div class="sign-check">
+      <div class="sign-row sign-good"><span class="sign-icon">✓</span><div class="sign-copy">BOARD the <b>1</b> where signs say <b id="boardSign">Uptown &amp; The Bronx</b>.</div></div>
+      <div class="sign-row sign-bad"><span class="sign-icon">×</span><div class="sign-copy">DO NOT BOARD trains signed <b id="avoidSign">Downtown / South Ferry</b>.</div></div>
+    </div>
+
+    <div class="guard-actions">
+      <button id="verifyCorrectBtn" class="primary" type="button">I see Uptown signs</button>
+      <button id="verifyOppositeBtn" class="danger-btn" type="button">I see Downtown signs</button>
+    </div>
+    <div id="platformStatus" class="platform-status">Check the platform signs before boarding.</div>
+  </section>
+
+  <section class="card">
+    <div class="card-head">
+      <div><div class="card-title">Choose your train</div><div id="routeLabel" class="card-sub">Times Sq–42 St → 116 St–Columbia University</div></div>
+      <div class="card-sub"><span id="count">--</span> active</div>
+    </div>
+    <div class="train-list">
+      <div class="row" id="row0"><div class="num"><span id="w0">--</span>m</div><div><div class="train-main">1 train · <span class="directionInline">Uptown</span></div><div class="train-meta">arrive <span class="tripDest">Columbia</span> in <span id="a0">--</span>m · ride <span id="r0">--</span>m</div></div><div class="train-chevron">›</div></div>
+      <div class="row" id="row1"><div class="num"><span id="w1">--</span>m</div><div><div class="train-main">1 train · <span class="directionInline">Uptown</span></div><div class="train-meta">arrive <span class="tripDest">Columbia</span> in <span id="a1">--</span>m · ride <span id="r1">--</span>m</div></div><div class="train-chevron">›</div></div>
+      <div class="row" id="row2"><div class="num"><span id="w2">--</span>m</div><div><div class="train-main">1 train · <span class="directionInline">Uptown</span></div><div class="train-meta">arrive <span class="tripDest">Columbia</span> in <span id="a2">--</span>m · ride <span id="r2">--</span>m</div></div><div class="train-chevron">›</div></div>
+    </div>
+  </section>
+
+  <section class="card board-card">
+    <div class="board-eyebrow">Selected train</div>
+    <div id="selectedHint"><div class="board-count">Pick a train</div><small>The app will warn you before it reaches your station.</small></div>
+    <div id="selectedInfo" hidden>
+      <div class="board-count" id="boardCountdown">Checking…</div>
+      <div class="board-direction"><span id="selectedDirectionText">UPTOWN 1</span> · board only this direction</div>
+      <div class="metric"><span>Next stop</span><b id="nextStop">--</b></div>
+      <div class="metric"><span>To next stop</span><b class="mono" id="nextRemain">--</b></div>
+      <div class="bar"><div class="fill" id="nextBar"></div></div>
+      <div class="metric"><span id="stopsLabel">Stops to Columbia</span><b id="stopsRemain">--</b></div>
+      <div class="metric"><span id="etaLabel">ETA Columbia</span><b class="mono" id="columbiaETA">--</b></div>
+      <div class="metric"><span>Remaining</span><b class="mono" id="columbiaRemain">--</b></div>
+      <div class="bar"><div class="fill" id="journeyBar"></div></div>
+      <div class="board-actions">
+        <button id="directionAlertsBtn" class="light" type="button">Direction alert: On</button>
+        <button id="arrivalReminderBtn" class="dark" type="button">Arrival reminder: Off</button>
+      </div>
+      <small id="directionAlertStatus">Warn 90 sec before your train arrives.</small><br>
+      <small id="arrivalReminderStatus">Tap to remind you near 116 St–Columbia.</small><br>
+      <small>Live MTA data with local estimate between refreshes.</small>
+    </div>
+  </section>
+
+
+
+  <section class="card stop-alert-card" id="stopAlertCard">
+    <div class="stop-alert-top">
+      <div><div class="stop-alert-title">Every-stop alerts</div><div class="card-sub">Highlights, speaks, sounds and notifies at every station.</div></div>
+      <div class="stop-alert-state" id="stopAlertState">ALL STOPS</div>
+    </div>
+    <button class="all-alerts-btn" id="enableAllAlertsBtn" type="button">Enable all notification modes</button>
+    <div class="mode-grid" id="modeGrid">
+      <button class="mode-btn on" data-mode="system" type="button">System notification<small id="systemModeStatus">permission needed</small></button>
+      <button class="mode-btn on" data-mode="voice" type="button">Voice announcement<small>station + action</small></button>
+      <button class="mode-btn on" data-mode="sound" type="button">Audio chime<small>next / arriving tones</small></button>
+      <button class="mode-btn on" data-mode="haptic" type="button">Vibration<small id="hapticModeStatus">when supported</small></button>
+      <button class="mode-btn on" data-mode="flash" type="button">Full-screen highlight<small>visual stop flash</small></button>
+      <button class="mode-btn on" data-mode="badge" type="button">App badge + title<small id="badgeModeStatus">when supported</small></button>
+      <button class="mode-btn on" data-mode="wake" type="button">Keep screen awake<small id="wakeModeStatus">tap to authorize</small></button>
+      <button class="mode-btn on" data-mode="toast" type="button">In-app banner<small>works in this page</small></button>
+    </div>
+    <div class="alert-support" id="alertSupportText">Two alerts per stop: “Next stop” when the station becomes next, then “Arriving” near the platform. Browser/OS support varies.</div>
+    <div class="stop-list" id="stopList"><div class="stop-row"><span class="stop-marker"></span><span class="stop-name">Select a train to load stops</span><span class="stop-eta">--</span></div></div>
+  </section>
+
+  <section class="card">
+    <div class="card-head"><div><div class="card-title">Where your train is</div><div class="card-sub">Selected train stays dark; others fade back.</div></div></div>
+    <div class="track-shell"><svg id="trackSvg" viewBox="0 0 420 500" aria-label="1 Train positions between Times Square and Columbia"></svg></div>
+    <div class="track-note">The arrow labels are secondary. Always match the large direction word and terminal sign above before boarding.</div>
+  </section>
+
+  <details class="detail-fold">
+    <summary>Trip details</summary>
+    <div class="details-inner">
+      <div class="comfort-card" id="comfortCard" hidden>
+        <div class="comfort-top"><div><small>Before you start</small><br><b>Comfort expectation</b></div><div class="comfort-score"><span id="comfortScore">--</span>%</div></div>
+        <div class="comfort-bar"><div class="comfort-fill" id="comfortFill"></div></div>
+        <small id="comfortLabel">Calculating weather, crowd and service…</small>
+      </div>
+
+      <div class="card" id="travelCompareCard" hidden>
+        <b>Ride time comparison</b>
+        <div class="metric"><span>🚇 Subway ride</span><b id="subwayCompare">-- min</b></div>
+        <div class="metric"><span>🚗 Car est.</span><b id="carCompare">-- min</b></div>
+        <small id="compareResult">Valhalla road estimate</small>
+      </div>
+
+      <div class="card">
+        <b>Trip outlook</b>
+        <div id="outlookHint"><small>Select a train first.</small></div>
+        <div id="outlookInfo" hidden>
+          <div class="outlook-grid">
+            <div class="outlook-box"><small>≤ ETA + 2 min</small><div class="outlook-value" id="onTimeProb">--%</div></div>
+            <div class="outlook-box"><small>Avg speed</small><div class="outlook-value"><span id="speed">--</span> mph</div></div>
+            <div class="outlook-box"><small>CO₂ saved</small><div class="outlook-value"><span id="carbon">--</span> kg</div></div>
+          </div>
+          <div class="dist"><span id="d0"></span><span id="d1"></span><span id="d2"></span><span id="d3"></span><span id="d4"></span><span id="d5"></span><span id="d6"></span><span id="d7"></span><span id="d8"></span></div>
+          <div class="dist-labels"><span>-4 min</span><span>ETA</span><span>+4 min</span></div>
+          <div class="env-grid">
+            <div class="env-item"><span>NYC temp</span><b id="cityTemp">--</b></div>
+            <div class="env-item"><span>Humidity</span><b id="humidity">--</b></div>
+            <div class="env-item"><span>Rain chance</span><b id="rainChance">--</b></div>
+            <div class="env-item" hidden><span>Snow chance est.</span><b id="snowChance">--</b></div>
+            <div class="env-item" hidden><span>Flood risk est.</span><b id="floodRisk">--</b></div>
+            <div class="env-item" hidden><span>Crowd est.</span><b id="crowdness">--</b></div>
+          </div>
+          <div class="notice"><small>MTA notice</small><br><b id="mtaNotice">No train-specific delay alert</b></div>
+          <div class="notice">
+            <small id="destinationActivityLabel">Destination activity · 116 St–Columbia</small><br><b id="destinationActivity">No nearby police/fire activity in MTA alerts</b>
+            <details style="margin-top:8px"><summary><b>Notify NYC</b></summary><div id="notifyActivity" style="margin-top:8px"><small>Loading recent official alerts…</small></div><small>Source: Notify NYC · NYC Emergency Management</small></details>
+            <details style="margin-top:8px"><summary><b>NWS weather alerts</b></summary><div id="nwsActivity" style="margin-top:8px"><small>Loading active weather alerts…</small></div><small>Source: National Weather Service · <span id="nwsSourcePlace">Columbia</span> location</small></details>
+          </div>
+          <details class="history-fold">
+            <summary>1 Train history · Same month last year <small id="historyWindow">same month last year</small></summary>
+            <div class="notice"><small><b>History note:</b> Weekend planned work caused the largest recurring disruptions. On normal weekdays, most incidents were short door, mechanical, NYPD, or signal problems; signal issues tended to create the broadest delays. Times Sq–Columbia has also seen occasional incidents around Times Sq, 59 St, 96 St, and 116 St.</small></div>
+            <div class="history-chart"><div class="history-date" id="historySummary">Loading same month last year notices…</div><svg viewBox="0 0 300 70" preserveAspectRatio="none" aria-label="1 Train notice count over the same month last year"><path id="historyArea" class="history-area" d=""></path><polyline id="historyLine" class="history-line" points=""></polyline><g id="historyDots"></g></svg><div class="history-axis"><span>month start</span><span>notices/day</span><span>month end</span></div></div>
+            <div id="historyRows"><small>Loading history…</small></div>
+          </details>
+          <small>History is line-level, not the same physical train. Arrival probability, crowd and flood are simplified estimates. Weather: Open-Meteo. Current MTA notice: GTFS-Realtime Alert. Historical notices: NY Open Data.</small>
+        </div>
+      </div>
+    </div>
+  </details>
+</div>
+
+<div class="alert-flash" id="alertFlash" aria-live="assertive" aria-atomic="true">
+  <div class="alert-flash-inner">
+    <div class="alert-flash-kicker" id="alertFlashKicker">NEXT STOP</div>
+    <div class="alert-flash-stop" id="alertFlashStop">--</div>
+    <div class="alert-flash-copy" id="alertFlashCopy">--</div>
+  </div>
+</div>
+<div id="safetyToast" class="safety-toast" role="status" aria-live="assertive"><div id="safetyToastTitle" class="toast-title"></div><div id="safetyToastBody" class="toast-body"></div></div>
+
+<script>
+const FEED="https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs";
+
+const PROTO=`
+syntax="proto2";
+package transit_realtime;
+message FeedMessage{required FeedHeader header=1;repeated FeedEntity entity=2;}
+message FeedHeader{required string gtfs_realtime_version=1;optional uint64 timestamp=3;}
+message FeedEntity{
+  required string id=1;
+  optional TripUpdate trip_update=3;
+  optional VehiclePosition vehicle=4;
+  optional Alert alert=5;
+}
+message TripUpdate{required TripDescriptor trip=1;repeated StopTimeUpdate stop_time_update=2;}
+message TripDescriptor{optional string trip_id=1;optional string route_id=5;}
+message StopTimeUpdate{
+  optional uint32 stop_sequence=1;
+  optional StopTimeEvent arrival=2;
+  optional StopTimeEvent departure=3;
+  optional string stop_id=4;
+}
+message StopTimeEvent{optional int32 delay=1;optional int64 time=2;}
+message VehiclePosition{
+  optional TripDescriptor trip=1;
+  optional uint32 current_stop_sequence=3;
+  optional int32 current_status=4 [default=2];
+  optional uint64 timestamp=5;
+  optional string stop_id=7;
+  optional int32 occupancy_status=9;
+}
+message TimeRange{optional uint64 start=1;optional uint64 end=2;}
+message EntitySelector{
+  optional string agency_id=1;
+  optional string route_id=2;
+  optional int32 route_type=3;
+  optional TripDescriptor trip=4;
+  optional string stop_id=5;
+}
+message Translation{required string text=1;optional string language=2;}
+message TranslatedString{repeated Translation translation=1;}
+message Alert{
+  repeated TimeRange active_period=1;
+  repeated EntitySelector informed_entity=5;
+  optional TranslatedString header_text=10;
+  optional TranslatedString description_text=11;
+}
+`;
+
+const root=protobuf.parse(PROTO).root;
+const FeedMessage=root.lookupType("transit_realtime.FeedMessage");
+
+const IDS=["127","126","125","124","123","122","121","120","119","118","117"];
+const TRACK_IDS=["128",...IDS];
+const NAME={
+  "128":"34 St–Penn Station",
+  "127":"Times Sq–42 St",
+  "126":"50 St",
+  "125":"59 St–Columbus Circle",
+  "124":"66 St–Lincoln Center",
+  "123":"72 St",
+  "122":"79 St",
+  "121":"86 St",
+  "120":"96 St",
+  "119":"103 St",
+  "118":"110 St",
+  "117":"116 St–Columbia",
+  "116":"125 St"
+};
+
+const ROUTES={
+  N:{
+    suffix:"N",
+    origin:"127",
+    destination:"117",
+    pre:"128",
+    path:[...IDS],
+    originName:"Times Sq–42 St",
+    destinationName:"116 St–Columbia University",
+    destinationShort:"Columbia",
+    destinationAlert:"116 St–Columbia",
+    destinationSpeech:"116th Street Columbia University",
+    originLat:40.7553,
+    originLon:-73.9870,
+    lat:40.8075,
+    lon:-73.9626,
+    alertKeywords:["116 st","116th st","columbia"],
+    notifyKeywords:[
+      "116 st","116th st","columbia university",
+      "morningside","manhattanville","10027"
+    ]
+  },
+  S:{
+    suffix:"S",
+    origin:"117",
+    destination:"127",
+    pre:"116",
+    path:[...IDS].reverse(),
+    originName:"116 St–Columbia University",
+    destinationName:"Times Sq–42 St",
+    destinationShort:"Times Sq",
+    destinationAlert:"Times Sq–42 St",
+    destinationSpeech:"Times Square 42nd Street",
+    originLat:40.8075,
+    originLon:-73.9626,
+    lat:40.7553,
+    lon:-73.9870,
+    alertKeywords:["times sq","times square","42 st","42nd st"],
+    notifyKeywords:[
+      "times sq","times square","42 st","42nd st",
+      "midtown manhattan","10036"
+    ]
+  }
+};
+
+let routeMode="N";
+function routeConfig(){return ROUTES[routeMode]}
+
+function n(x){return x==null?null:Number(x.toString())}
+
+let selectedTrip=null;
+let currentTrips=[null,null,null];
+let currentActive=[];
+
+let arrivalReminderOn=false;
+let arrivalReminderTrip=null;
+let arrivalReminderTriggered=false;
+
+// Stop-by-stop multimodal notification state.
+const stopAlertModes={system:true,voice:true,sound:true,haptic:true,flash:true,badge:true,wake:true,toast:true};
+let stopAlertsOn=true;
+let stopAlertTrip=null;
+let stopNextNotified=new Set();
+let stopArrivingNotified=new Set();
+let stopLastNextId=null;
+let audioCtx=null;
+let wakeLock=null;
+let flashTimer=null;
+let serviceWorkerRegistration=null;
+
+
+// Calibrated from current observed NYC traffic:
+ // Valhalla 13 min vs Apple Maps 22 min -> ~1.69.
+const CAR_TRAFFIC_FACTOR=1.7;
+
+const carEstimateMinutes={N:null,S:null};
+const carEstimateLoading={N:false,S:false};
+const tripSnapshots=new Map();
+
+// Displayed selected-train progress is monotonic:
+// a later MTA refresh may update ETA, but it cannot visually move the train backward.
+const selectedProgressMax=new Map();
+
+const vehicleState=new Map();
+let mtaAlerts=[];
+let weatherState={
+  temp:null, humidity:null, rain:null, snow:null, flood:"--"
+};
+
+function fmtRemain(sec){
+  sec=Math.max(0,Math.round(sec));
+  const m=Math.floor(sec/60), s=sec%60;
+  return m>0 ? `${m}m ${String(s).padStart(2,"0")}s` : `${s}s`;
+}
+
+function clamp01(x){return Math.max(0,Math.min(1,x))}
+function erf(x){
+  const s=x<0?-1:1; x=Math.abs(x);
+  const t=1/(1+0.3275911*x);
+  const y=1-(((((1.061405429*t-1.453152027)*t+1.421413741)*t-0.284496736)*t+0.254829592)*t)*Math.exp(-x*x);
+  return s*y;
+}
+function normalCDF(x,sigma){
+  return 0.5*(1+erf(x/(sigma*Math.sqrt(2))));
+}
+
+
+function translatedText(ts){
+  return ts?.translation?.[0]?.text || "";
+}
+
+function crowdEstimate(){
+  const v=vehicleState.get(selectedTrip);
+  const o=v?.occupancyStatus;
+
+  // GTFS occupancy_status if MTA supplies it.
+  if(o!=null){
+    if(o===0 || o===1) return "Low";
+    if(o===2) return "Medium";
+    if(o===3 || o===4 || o===5) return "High";
+  }
+
+  // Fallback: simple NYC weekday/time heuristic.
+  const d=new Date();
+  const h=d.getHours();
+  const weekday=d.getDay()>=1 && d.getDay()<=5;
+  if(weekday && ((h>=7&&h<10)||(h>=16&&h<19))) return "High*";
+  if((h>=10&&h<16)||(h>=19&&h<22)) return "Medium*";
+  return "Low*";
+}
+
+function selectedMtaNotice(){
+  let routeNotice="";
+
+  for(const a of mtaAlerts){
+    const text=translatedText(a.headerText) ||
+               translatedText(a.descriptionText) ||
+               "MTA alert";
+
+    for(const ent of a.informedEntity||[]){
+      if(ent.trip?.tripId===selectedTrip) return text;
+      if(ent.routeId==="1") routeNotice=text;
+    }
+  }
+  return routeNotice || "No train-specific delay alert";
+}
+
+
+function comfortExpectation(){
+  const card=document.getElementById("comfortCard");
+
+  if(!selectedTrip){
+    card.hidden=true;
+    return;
+  }
+
+  card.hidden=false;
+  let weather=80;
+
+  if(weatherState.temp!=null){
+    weather=100-Math.abs(weatherState.temp-72)*2;
+  }
+
+  if(weatherState.humidity!=null && weatherState.humidity>60){
+    weather-=Math.min(18,(weatherState.humidity-60)*0.45);
+  }
+
+  if(weatherState.rain!=null) weather-=weatherState.rain*0.18;
+  if(weatherState.snow!=null) weather-=weatherState.snow*0.12;
+
+  if(weatherState.flood==="Moderate*") weather-=8;
+  if(weatherState.flood==="Elevated*") weather-=16;
+  if(weatherState.flood==="High*") weather-=28;
+
+  weather=Math.max(0,Math.min(100,weather));
+
+  const crowd=crowdEstimate();
+  let crowdScore=75;
+  if(crowd.startsWith("Low")) crowdScore=95;
+  else if(crowd.startsWith("Medium")) crowdScore=75;
+  else if(crowd.startsWith("High")) crowdScore=45;
+
+  const notice=selectedMtaNotice();
+  let service=95;
+  const s=String(notice||"").toLowerCase();
+
+  if(s.includes("suspend")) service=10;
+  else if(s.includes("signal")) service=40;
+  else if(s.includes("delay")) service=55;
+  else if(s.includes("service change")) service=65;
+
+  const walking=Math.max(
+    0,
+    Math.min(100,weather-(weatherState.rain||0)*0.08)
+  );
+
+  const rawComfort=
+    0.35*weather +
+    0.30*crowdScore +
+    0.25*service +
+    0.10*walking;
+
+  // Conservative display scale: start around a 60% baseline.
+  // Conditions above/below 60 only move the score by half as much.
+  const score=Math.round(
+    Math.max(
+      0,
+      Math.min(
+        100,
+        60 + 0.5*(rawComfort-60)
+      )
+    )
+  );
+
+  let label="Comfortable";
+  if(score>=85) label="Very comfortable";
+  else if(score>=70) label="Comfortable";
+  else if(score>=55) label="Fair";
+  else if(score>=40) label="Uncomfortable";
+  else label="Poor";
+
+  const reasons=[];
+  if(crowdScore<=50) reasons.push("high crowd");
+  else if(crowdScore>=90) reasons.push("low crowd");
+  if(weather>=85) reasons.push("comfortable weather");
+  else if(weather<60) reasons.push("weather may reduce comfort");
+  if(service<70) reasons.push("service conditions");
+  else reasons.push("no major service issue");
+
+  document.getElementById("comfortScore").textContent=score;
+  document.getElementById("comfortFill").style.width=score+"%";
+  document.getElementById("comfortLabel").textContent=
+    `${label} · ${reasons.slice(0,3).join(" · ")}`;
+}
+
+
+
+function escapeHtml(s){
+  return String(s||"")
+    .replace(/&/g,"&amp;")
+    .replace(/</g,"&lt;")
+    .replace(/>/g,"&gt;");
+}
+
+function nycSocrataTime(ms){
+  const parts=new Intl.DateTimeFormat("en-CA",{
+    timeZone:"America/New_York",
+    year:"numeric",
+    month:"2-digit",
+    day:"2-digit",
+    hour:"2-digit",
+    minute:"2-digit",
+    second:"2-digit",
+    hourCycle:"h23"
+  }).formatToParts(new Date(ms));
+
+  const get=t=>parts.find(p=>p.type===t)?.value || "";
+  return `${get("year")}-${get("month")}-${get("day")}T${get("hour")}:${get("minute")}:${get("second")}`;
+}
+
+
+function parseNotifyTime(s){
+  const m=String(s||"").match(
+    /(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2}):(\d{2})/
+  );
+  if(!m) return null;
+
+  return new Date(
+    Number(m[3]),
+    Number(m[1])-1,
+    Number(m[2]),
+    Number(m[4]),
+    Number(m[5]),
+    Number(m[6])
+  );
+}
+
+
+function notifyDestinationRelevant(s){
+  const t=String(s||"").toLowerCase();
+  const c=routeConfig();
+
+  const nearby=c.notifyKeywords.some(k=>t.includes(k));
+
+  const citywide=
+    t.includes("(nyc)") ||
+    t.includes("where: nyc") ||
+    t.includes("all five boroughs") ||
+    t.includes("citywide");
+
+  const important=[
+    "police","nypd","fdny","fire",
+    "emergency","shelter in place","evacuation",
+    "flash flood","flood warning","severe thunderstorm",
+    "tornado","power outage","road closure",
+    "mass transit","weather"
+  ].some(k=>t.includes(k));
+
+  return nearby || (citywide && important);
+}
+
+async function updateNotifyActivity(){
+  const box=document.getElementById("notifyActivity");
+  if(!box) return;
+
+  try{
+    // Browser-readable copy of the official Notify NYC recent-notifications page.
+    const r=await fetch(
+      "https://r.jina.ai/http://a858-nycnotify.nyc.gov/notifynyc/",
+      {cache:"no-store"}
+    );
+    if(!r.ok) throw new Error("HTTP "+r.status);
+
+    const body=await r.text();
+
+    const re=/(\d{2}\/\d{2}\/\d{4}\s+\d{2}:\d{2}:\d{2})\s*\n+#+\s*(Notify NYC[^\n]*)\n+([\s\S]*?)(?=\n\d{2}\/\d{2}\/\d{4}\s+\d{2}:\d{2}:\d{2}|\n### The information|$)/g;
+    const items=[];
+    let m;
+
+    while((m=re.exec(body))!==null){
+      const title=m[2].replace(/^Notify NYC\s*-\s*/i,"").trim();
+      const desc=m[3].replace(/\s+/g," ").trim();
+      const all=title+" "+desc;
+
+      if(!notifyDestinationRelevant(all)) continue;
+
+      const when=parseNotifyTime(m[1]);
+      if(!when) continue;
+
+      items.push({title,desc,when});
+    }
+
+    items.sort((a,b)=>b.when-a.when);
+    const recent=items.filter(x=>
+      Date.now()-x.when.getTime() <= 7*24*60*60*1000
+    ).slice(0,2);
+
+    if(!recent.length){
+      box.innerHTML=
+        `<small>No relevant ${escapeHtml(routeConfig().destinationShort)}/NYC Notify NYC alert found in the past 7 days.</small>`;
+      return;
+    }
+
+    box.innerHTML=recent.map(x=>{
+      const when=x.when.toLocaleString([],{
+        month:"short",day:"numeric",
+        hour:"numeric",minute:"2-digit"
+      });
+
+      return `<div style="margin-top:6px">
+        <b>${escapeHtml(x.title)}</b><br>
+        <small>${escapeHtml(when)}</small>
+      </div>`;
+    }).join("");
+
+  }catch(e){
+    box.innerHTML=
+      "<small>Notify NYC alerts temporarily unavailable.</small>";
+  }
+}
+
+async function updateNwsActivity(){
+  const box=document.getElementById("nwsActivity");
+  if(!box) return;
+
+  try{
+    const c=routeConfig();
+    const r=await fetch(
+      `https://api.weather.gov/alerts/active?point=${c.lat},${c.lon}`,
+      {
+        cache:"no-store",
+        headers:{"Accept":"application/geo+json"}
+      }
+    );
+
+    if(!r.ok) throw new Error("HTTP "+r.status);
+
+    const data=await r.json();
+    const features=Array.isArray(data?.features) ? data.features : [];
+
+    const alerts=features
+      .map(f=>f?.properties||{})
+      .filter(p=>p.event || p.headline)
+      .slice(0,2);
+
+    if(!alerts.length){
+      box.innerHTML=`<small>No active NWS alert for ${escapeHtml(routeConfig().destinationShort)}.</small>`;
+      return;
+    }
+
+    box.innerHTML=alerts.map(p=>{
+      const title=p.event || p.headline || "Weather alert";
+      const detail=[
+        p.severity && p.severity!=="Unknown" ? p.severity : "",
+        p.expires
+          ? "until "+new Date(p.expires).toLocaleTimeString([],{
+              hour:"numeric",minute:"2-digit"
+            })
+          : ""
+      ].filter(Boolean).join(" · ");
+
+      return `<div style="margin-top:6px">
+        <b>${escapeHtml(title)}</b><br>
+        ${detail ? `<small>${escapeHtml(detail)}</small>` : ""}
+      </div>`;
+    }).join("");
+
+  }catch(e){
+    box.innerHTML=
+      "<small>NWS alerts temporarily unavailable.</small>";
+  }
+}
+
+async function update311Activity(){
+  const box=document.getElementById("nearby311Activity");
+  if(!box) return;
+
+  // 116 St–Columbia University.
+  const LAT=40.8075;
+  const LON=-73.9626;
+  const API="https://data.cityofnewyork.us/resource/erm2-nwe9.json";
+
+  const urgentWhere=[
+    "lower(complaint_type) like '%fire%'",
+    "lower(descriptor) like '%fire%'",
+    "lower(complaint_type) like '%smoke%'",
+    "lower(descriptor) like '%smoke%'",
+    "lower(complaint_type) like '%gas leak%'",
+    "lower(descriptor) like '%gas leak%'",
+    "lower(complaint_type) like '%gas odor%'",
+    "lower(descriptor) like '%gas odor%'",
+    "lower(complaint_type) like '%carbon monoxide%'",
+    "lower(descriptor) like '%carbon monoxide%'",
+    "lower(complaint_type) like '%explosion%'",
+    "lower(descriptor) like '%explosion%'",
+    "lower(complaint_type) like '%hazardous%'",
+    "lower(descriptor) like '%hazardous%'",
+    "lower(complaint_type) like '%dangerous condition%'",
+    "lower(descriptor) like '%dangerous condition%'",
+    "lower(complaint_type) like '%building collapse%'",
+    "lower(descriptor) like '%building collapse%'",
+    "lower(complaint_type) like '%structural%'",
+    "lower(descriptor) like '%structural%'",
+    "lower(complaint_type) like '%electrical%'",
+    "lower(descriptor) like '%electrical%'",
+    "lower(complaint_type) like '%transformer%'",
+    "lower(descriptor) like '%transformer%'",
+    "lower(complaint_type) like '%manhole%'",
+    "lower(descriptor) like '%manhole%'",
+    "lower(complaint_type) like '%flooding%'",
+    "lower(descriptor) like '%flooding%'",
+    "lower(complaint_type) like '%water main break%'",
+    "lower(descriptor) like '%water main break%'",
+    "lower(complaint_type) like '%fallen tree%'",
+    "lower(descriptor) like '%fallen tree%'",
+    "lower(complaint_type) like '%tree down%'",
+    "lower(descriptor) like '%tree down%'",
+    "lower(complaint_type) like '%emergency%'",
+    "lower(descriptor) like '%emergency%'"
+  ].join(" OR ");
+
+  try{
+    /*
+      First find the newest 311 record actually available near Columbia.
+      This prevents a stale public dataset from being mistaken for
+      "no nearby activity".
+    */
+    const latestParams=new URLSearchParams({
+      "$select":"max(created_date) as latest",
+      "$where":`within_circle(location,${LAT},${LON},1000)`
+    });
+
+    const latestResp=await fetch(
+      API+"?"+latestParams.toString(),
+      {cache:"no-store"}
+    );
+    if(!latestResp.ok) throw new Error("latest HTTP "+latestResp.status);
+
+    const latestRows=await latestResp.json();
+    const latestText=latestRows?.[0]?.latest;
+    if(!latestText) throw new Error("no latest 311 timestamp");
+
+    const latestDate=new Date(latestText);
+    if(!Number.isFinite(latestDate.getTime())){
+      throw new Error("invalid latest 311 timestamp");
+    }
+
+    const ageMs=Date.now()-latestDate.getTime();
+    const stale=ageMs > 36*60*60*1000;
+
+    // If the feed is current, use the real past 24 h.
+    // If stale, use the latest available 24 h in the dataset.
+    const endMs=stale ? latestDate.getTime() : Date.now();
+    const startMs=endMs-24*60*60*1000;
+
+    const start=nycSocrataTime(startMs);
+    const end=nycSocrataTime(endMs);
+
+    const params=new URLSearchParams({
+      "$select":"unique_key,created_date,agency,complaint_type,descriptor,incident_address,latitude,longitude",
+      "$where":
+        `created_date >= '${start}' AND ` +
+        `created_date <= '${end}' AND ` +
+        `within_circle(location,${LAT},${LON},1000) AND ` +
+        `(${urgentWhere})`,
+      "$order":"created_date DESC",
+      "$limit":"10"
+    });
+
+    const r=await fetch(
+      API+"?"+params.toString(),
+      {cache:"no-store"}
+    );
+    if(!r.ok) throw new Error("records HTTP "+r.status);
+
+    const rows=await r.json();
+
+    const latestLabel=latestDate.toLocaleString([],{
+      month:"short",
+      day:"numeric",
+      hour:"numeric",
+      minute:"2-digit"
+    });
+
+    if(!Array.isArray(rows) || !rows.length){
+      box.innerHTML=stale
+        ? `<small>311 urgent nearby activity: no urgent record found in the latest available 24 h.<br>Data near Columbia currently ends ${escapeHtml(latestLabel)}.</small>`
+        : "<small>311 urgent nearby activity: no urgent safety-related request found within ~1 km in the past 24 h.</small>";
+      return;
+    }
+
+    const header=stale
+      ? `<small><b>Latest available 311 data:</b> ${escapeHtml(latestLabel)}</small>`
+      : `<small><b>Past 24 h</b></small>`;
+
+    box.innerHTML=header + rows.slice(0,10).map(row=>{
+      const title=[
+        row.complaint_type,
+        row.descriptor
+      ].filter(Boolean).join(" · ");
+
+      const agency=row.agency || "NYC 311";
+      const address=row.incident_address || "near destination";
+
+      const when=row.created_date
+        ? new Date(row.created_date).toLocaleString([],{
+            month:"short",
+            day:"numeric",
+            hour:"numeric",
+            minute:"2-digit"
+          })
+        : "";
+
+      return `<div style="margin-top:6px">
+        <b>${escapeHtml(title || "311 service request")}</b><br>
+        <small>${escapeHtml(agency)} · ${escapeHtml(address)}${when ? " · "+escapeHtml(when) : ""}</small>
+      </div>`;
+    }).join("");
+
+  }catch(e){
+    box.innerHTML=
+      `<small>311 urgent nearby activity: NYC Open Data unavailable (${escapeHtml(e.message||e)}).</small>`;
+  }
+}
+
+function destinationActivity(){
+  const c=routeConfig();
+  const keywords=[
+    "nypd","police","fdny","fire","smoke",
+    "emergency","investigation","medical"
+  ];
+
+  let routeLevel="";
+
+  for(const a of mtaAlerts){
+    const text=(
+      (translatedText(a.headerText)||"") + " " +
+      (translatedText(a.descriptionText)||"")
+    ).trim();
+
+    const lower=text.toLowerCase();
+    if(!keywords.some(k=>lower.includes(k))) continue;
+
+    for(const ent of a.informedEntity||[]){
+      const stop=String(ent.stopId||"");
+      if(
+        stop===c.destination ||
+        stop===c.destination+"N" ||
+        stop===c.destination+"S"
+      ){
+        return text || `Emergency activity near ${c.destinationAlert}`;
+      }
+
+      if(
+        ent.routeId==="1" &&
+        c.alertKeywords.some(k=>lower.includes(k))
+      ){
+        return text || `Emergency activity near ${c.destinationAlert}`;
+      }
+
+      if(ent.routeId==="1") routeLevel=text;
+    }
+  }
+
+  return routeLevel &&
+    c.alertKeywords.some(k=>routeLevel.toLowerCase().includes(k))
+      ? routeLevel
+      : "No nearby police/fire activity in MTA alerts";
+}
+
+function renderEnvironment(){
+  document.getElementById("cityTemp").textContent=
+    weatherState.temp==null ? "--" : `${weatherState.temp.toFixed(0)}°F`;
+
+  document.getElementById("humidity").textContent=
+    weatherState.humidity==null ? "--" : `${weatherState.humidity.toFixed(0)}%`;
+
+  document.getElementById("rainChance").textContent=
+    weatherState.rain==null ? "--" : `${weatherState.rain}%`;
+
+  document.getElementById("snowChance").textContent=
+    weatherState.snow==null ? "--" : `${weatherState.snow}%`;
+
+  document.getElementById("floodRisk").textContent=weatherState.flood;
+  document.getElementById("crowdness").textContent=crowdEstimate();
+  document.getElementById("mtaNotice").textContent=selectedMtaNotice();
+  document.getElementById("destinationActivity").textContent=destinationActivity();
+  comfortExpectation();
+}
+
+
+function affectedIncludes1(value){
+  const tokens=String(value||"")
+    .split("|")
+    .map(x=>x.trim())
+    .filter(Boolean);
+
+  return tokens.some(t=>/^1(?:\s|$)/i.test(t));
+}
+
+function historyDateLabel(s){
+  if(!s) return "";
+  const d=new Date(s);
+  if(Number.isNaN(d.getTime())) return String(s);
+  return d.toLocaleDateString([], {month:"short",day:"numeric"}) +
+         " " +
+         d.toLocaleTimeString([], {hour:"numeric",minute:"2-digit"});
+}
+
+function dateKeyUTC(d){
+  return d.toISOString().slice(0,10);
+}
+
+function unwrapRows(payload){
+  if(Array.isArray(payload)) return payload;
+  if(Array.isArray(payload?.data)) return payload.data;
+  if(Array.isArray(payload?.response)) return payload.response;
+  if(Array.isArray(payload?.data?.response)) return payload.data.response;
+  if(Array.isArray(payload?.results)) return payload.results;
+  return [];
+}
+
+async function updateHistory(){
+  const box=document.getElementById("historyRows");
+  const windowLabel=document.getElementById("historyWindow");
+  const summary=document.getElementById("historySummary");
+  const line=document.getElementById("historyLine");
+  const area=document.getElementById("historyArea");
+  const API="https://data.ny.gov/resource/7kct-peq7.json";
+
+  try{
+    box.innerHTML="<small>Loading full same-month-last-year history…</small>";
+    summary.textContent="Loading same-month-last-year notice counts…";
+
+    // Same calendar month, one year earlier.
+    // Example: Aug 2026 -> Aug 1–31, 2025.
+    const now=new Date();
+    const year=now.getUTCFullYear()-1;
+    const month=now.getUTCMonth();
+
+    const startUTC=new Date(Date.UTC(year,month,1));
+    const endUTC=new Date(Date.UTC(year,month+1,0));
+
+    const startKey=dateKeyUTC(startUTC);
+    const endKey=dateKeyUTC(endUTC);
+
+    const where=
+      `date >= '${startKey}T00:00:00' ` +
+      `AND date <= '${endKey}T23:59:59' ` +
+      `AND affected like '%1%'`;
+
+    const params=new URLSearchParams({
+      "$select":"event_id,update_number,date,status_label,affected,header,description",
+      "$where":where,
+      "$order":"date DESC, update_number DESC",
+      "$limit":"5000"
+    });
+
+    const r=await fetch(API+"?"+params.toString());
+    if(!r.ok) throw new Error("archive HTTP "+r.status);
+
+    const payload=await r.json();
+    const rows=Array.isArray(payload) ? payload :
+      (Array.isArray(payload?.data) ? payload.data : []);
+
+    if(!rows.length){
+      throw new Error("archive returned 0 rows");
+    }
+
+    // Deduplicate revisions: keep newest revision for every Event ID.
+    const unique=[];
+    const seenEvents=new Set();
+
+    for(const row of rows){
+      if(!affectedIncludes1(row.affected)) continue;
+
+      const id=String(row.event_id || row.header || row.date);
+      if(seenEvents.has(id)) continue;
+
+      seenEvents.add(id);
+      unique.push(row);
+    }
+
+    // Build one point for each calendar day in the same month last year.
+    const days=endUTC.getUTCDate();
+    const counts=new Array(days).fill(0);
+
+    for(const row of unique){
+      const d=String(row.date||"").slice(0,10);
+      if(!d.startsWith(startKey.slice(0,7))) continue;
+      const day=Number(d.slice(8,10));
+      if(day>=1 && day<=days) counts[day-1]++;
+    }
+
+    const total=counts.reduce((a,b)=>a+b,0);
+    const peak=Math.max(0,...counts);
+
+    const monthLabel=startUTC.toLocaleDateString([],{
+      month:"long",
+      year:"numeric",
+      timeZone:"UTC"
+    });
+
+    windowLabel.textContent=monthLabel;
+    summary.textContent=
+      `${total} unique 1 Train notices · peak ${peak}/day`;
+
+    // Plot ONLY the same month last year's dates.
+    const maxCount=Math.max(1,peak);
+    const pts=counts.map((c,i)=>{
+      const x=days===1 ? 150 : i*(300/(days-1));
+      const y=62-(c/maxCount)*52;
+      return {x,y,c};
+    });
+
+    const pointString=pts
+      .map(p=>`${p.x.toFixed(1)},${p.y.toFixed(1)}`)
+      .join(" ");
+
+    line.setAttribute("points",pointString);
+
+    area.setAttribute(
+      "d",
+      `M0,62 L${pts.map(p=>`${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" L")} L300,62 Z`
+    );
+
+    const axis=document.querySelector(".history-axis");
+    if(axis){
+      axis.innerHTML=
+        `<span>${startUTC.toLocaleDateString([], {month:"short",day:"numeric",timeZone:"UTC"})}</span>` +
+        `<span>notices/day</span>` +
+        `<span>${endUTC.toLocaleDateString([], {month:"short",day:"numeric",timeZone:"UTC"})}</span>`;
+    }
+
+    if(!unique.length){
+      box.innerHTML=
+        "<div class='history-row'><small>No archived 1 Train notices found for the same month last year.</small></div>";
+      return;
+    }
+
+    // FULL history: show every unique notice from the same month last year.
+    box.innerHTML=unique.map(row=>`
+      <div class="history-row">
+        <div class="history-date">
+          ${historyDateLabel(row.date)} · ${row.status_label||"MTA alert"}
+        </div>
+        <div>${row.header||row.description||"Service notice"}</div>
+      </div>
+    `).join("");
+
+  }catch(e){
+    line.setAttribute("points","");
+    area.setAttribute("d","");
+    summary.textContent="History load failed";
+    box.innerHTML=
+      `<div class='history-row'><small>History unavailable: ${String(e.message||e)}</small></div>`;
+  }
+}
+
+async function updateWeather(){
+  try{
+    const c=routeConfig();
+    const url=
+      "https://api.open-meteo.com/v1/forecast" +
+      `?latitude=${c.lat}&longitude=${c.lon}` +
+      "&current=temperature_2m,relative_humidity_2m" +
+      "&hourly=precipitation_probability,rain,snowfall" +
+      "&forecast_days=1&timezone=America%2FNew_York" +
+      "&temperature_unit=fahrenheit&precipitation_unit=inch";
+
+    const r=await fetch(url);
+    if(!r.ok) return;
+    const d=await r.json();
+
+    const currentHour=(d.current?.time||"").slice(0,13)+":00";
+    let i=(d.hourly?.time||[]).indexOf(currentHour);
+    if(i<0) i=0;
+
+    const temp=Number(d.current?.temperature_2m);
+    const humidity=Number(d.current?.relative_humidity_2m);
+    const precipProb=Number(d.hourly?.precipitation_probability?.[i] ?? 0);
+    const rainIn=Number(d.hourly?.rain?.[i] ?? 0);
+    const snowIn=Number(d.hourly?.snowfall?.[i] ?? 0);
+
+    // Open-Meteo has precipitation probability but not a direct snowfall probability.
+    // Use the same precip probability when snow is forecast; otherwise a cold-weather fallback.
+    const snowProb=snowIn>0
+      ? precipProb
+      : (temp<=34 ? Math.round(precipProb*0.5) : 0);
+
+    let flood="Low";
+    if(rainIn>=1.0) flood="High*";
+    else if(rainIn>=0.5) flood="Elevated*";
+    else if(rainIn>=0.20 && precipProb>=60) flood="Moderate*";
+
+    weatherState={
+      temp:Number.isFinite(temp)?temp:null,
+      humidity:Number.isFinite(humidity)?humidity:null,
+      rain:Number.isFinite(precipProb)?Math.round(precipProb):null,
+      snow:Number.isFinite(snowProb)?Math.round(snowProb):null,
+      flood
+    };
+
+    renderEnvironment();
+  }catch{}
+}
+
+
+async function fetchCarEstimate(){
+  const c=routeConfig();
+  const mode=routeMode;
+
+  if(carEstimateMinutes[mode]!=null || carEstimateLoading[mode]) return;
+
+  carEstimateLoading[mode]=true;
+  updateTravelComparison();
+
+  try{
+    const request={
+      locations:[
+        {lat:c.originLat,lon:c.originLon},
+        {lat:c.lat,lon:c.lon}
+      ],
+      costing:"auto",
+      units:"miles"
+    };
+
+    const url=
+      "https://valhalla1.openstreetmap.de/route?json=" +
+      encodeURIComponent(JSON.stringify(request));
+
+    const r=await fetch(url,{cache:"no-store"});
+    if(!r.ok) throw new Error("HTTP "+r.status);
+
+    const data=await r.json();
+    const sec=Number(data?.trip?.summary?.time);
+
+    if(!Number.isFinite(sec) || sec<=0){
+      throw new Error("invalid route time");
+    }
+
+    // Valhalla public server gives a road-route baseline.
+    // Apply a simple NYC traffic calibration factor for a more realistic estimate.
+    carEstimateMinutes[mode]=(sec/60)*CAR_TRAFFIC_FACTOR;
+  }catch(e){
+    carEstimateMinutes[mode]="error";
+  }finally{
+    carEstimateLoading[mode]=false;
+    updateTravelComparison();
+  }
+}
+
+function updateTravelComparison(){
+  const card=document.getElementById("travelCompareCard");
+  if(!card) return;
+
+  if(!selectedTrip){
+    card.hidden=true;
+    return;
+  }
+
+  const snap=tripSnapshots.get(selectedTrip);
+  if(!snap){
+    card.hidden=true;
+    return;
+  }
+
+  const c=routeConfig();
+  const t0=snap.times[c.origin+c.suffix];
+  const t1=snap.times[c.destination+c.suffix];
+
+  if(!t0 || !t1 || t1<=t0){
+    card.hidden=true;
+    return;
+  }
+
+  card.hidden=false;
+
+  const subway=(t1-t0)/60;
+  document.getElementById("subwayCompare").textContent=
+    `${Math.round(subway)} min`;
+
+  const car=carEstimateMinutes[routeMode];
+  const carEl=document.getElementById("carCompare");
+  const result=document.getElementById("compareResult");
+
+  if(carEstimateLoading[routeMode]){
+    carEl.textContent="loading…";
+    result.textContent="Valhalla × NYC traffic factor";
+    return;
+  }
+
+  if(car==="error"){
+    carEl.textContent="-- min";
+    result.textContent="Car estimate temporarily unavailable";
+    return;
+  }
+
+  if(car==null){
+    carEl.textContent="-- min";
+    result.textContent="Valhalla × NYC traffic factor";
+    fetchCarEstimate();
+    return;
+  }
+
+  carEl.textContent=`${Math.round(car)} min`;
+
+  const delta=car-subway;
+
+  if(delta>=1.5){
+    result.textContent=`Subway ~${Math.round(delta)} min faster`;
+  }else if(delta<=-1.5){
+    result.textContent=`Car ~${Math.round(-delta)} min faster`;
+  }else{
+    result.textContent="Similar ride time";
+  }
+}
+
+function renderOutlook(){
+  const snap=tripSnapshots.get(selectedTrip);
+  const hint=document.getElementById("outlookHint");
+  const info=document.getElementById("outlookInfo");
+
+  if(!selectedTrip || !snap){
+    hint.hidden=false; info.hidden=true; return;
+  }
+
+  const c=routeConfig();
+  const now=Date.now()/1000;
+  const times=snap.times;
+  const t0=times[c.origin+c.suffix];
+  const t1=times[c.destination+c.suffix];
+
+  if(!t1){
+    hint.hidden=false; info.hidden=true; return;
+  }
+
+  hint.hidden=true; info.hidden=false;
+
+  let stops=0;
+  for(const id of c.path){
+    const t=times[id+c.suffix];
+    if(t && t>=now) stops++;
+  }
+
+  const sigma=Math.max(60,45+12*stops);
+  const p=normalCDF(120,sigma);
+  document.getElementById("onTimeProb").textContent=(p*100).toFixed(0)+"%";
+
+  const miles=4.2;
+  const mph=(t0 && t1>t0) ? miles/((t1-t0)/3600) : null;
+  document.getElementById("speed").textContent=mph ? mph.toFixed(1) : "--";
+
+  const saved=miles*(0.40-0.10);
+  document.getElementById("carbon").textContent=saved.toFixed(2);
+
+  const offsets=[-4,-3,-2,-1,0,1,2,3,4];
+  const w=offsets.map(m=>Math.exp(-0.5*Math.pow((m*60)/sigma,2)));
+  const max=Math.max(...w);
+  w.forEach((v,i)=>{
+    document.getElementById("d"+i).style.height=(6+54*v/max)+"px";
+  });
+
+  renderEnvironment();
+}
+
+
+function eventTime(s){
+  return n(s.departure?.time ?? s.arrival?.time);
+}
+
+function saveSnapshot(u){
+  const tripId=u.trip?.tripId||"";
+  if(!tripId) return;
+
+  // Merge instead of replace:
+  // MTA may remove already-passed stops such as 127N from later updates.
+  // Keeping old timestamps prevents overall journey progress from resetting.
+  const old=tripSnapshots.get(tripId);
+  const times=old ? {...old.times} : {};
+
+  for(const s of u.stopTimeUpdate||[]){
+    const t=eventTime(s);
+    if(t) times[s.stopId]=t;
+  }
+
+  tripSnapshots.set(tripId,{times});
+}
+
+
+function updateArrivalReminderUI(){
+  const btn=document.getElementById("arrivalReminderBtn");
+  const status=document.getElementById("arrivalReminderStatus");
+  if(!btn || !status) return;
+
+  const c=routeConfig();
+
+  btn.textContent=arrivalReminderOn
+    ? "Arrival reminder: On"
+    : "Arrival reminder: Off";
+
+  if(arrivalReminderTriggered){
+    status.textContent="Arrival reminder sent.";
+  }else if(arrivalReminderOn){
+    status.textContent=`Will remind you near ${c.destinationAlert}.`;
+  }else{
+    status.textContent=`Tap to remind you near ${c.destinationAlert}.`;
+  }
+}
+
+function triggerArrivalReminder(){
+  if(arrivalReminderTriggered) return;
+  arrivalReminderTriggered=true;
+  updateArrivalReminderUI();
+
+  const c=routeConfig();
+  alert(`Approaching ${c.destinationName}`);
+
+  if("speechSynthesis" in window){
+    try{
+      speechSynthesis.cancel();
+      speechSynthesis.speak(
+        new SpeechSynthesisUtterance(
+          `Approaching ${c.destinationSpeech}.`
+        )
+      );
+    }catch{}
+  }
+}
+
+function checkArrivalReminder(destinationTime,nextId){
+  if(
+    !arrivalReminderOn ||
+    arrivalReminderTriggered ||
+    !selectedTrip ||
+    arrivalReminderTrip!==selectedTrip
+  ) return;
+
+  const c=routeConfig();
+  const now=Date.now()/1000;
+  const remain=destinationTime ? destinationTime-now : Infinity;
+
+  if(nextId===c.destination || remain<=120){
+    triggerArrivalReminder();
+  }
+}
+
+
+function rawSelectedRouteProgress(times,now){
+  if(!times) return null;
+
+  const c=routeConfig();
+  const track=[c.pre,...c.path];
+
+  let nextIndex=-1;
+  let nextTime=null;
+
+  for(let i=0;i<track.length;i++){
+    const t=times[track[i]+c.suffix];
+    if(t && t>=now){
+      nextIndex=i;
+      nextTime=t;
+      break;
+    }
+  }
+
+  if(nextIndex<0){
+    const end=times[c.destination+c.suffix];
+    return end && now>=end ? c.path.length-1 : null;
+  }
+
+  if(nextIndex===0) return -1;
+
+  const prevId=track[nextIndex-1];
+  let prevTime=times[prevId+c.suffix];
+
+  if(!prevTime || prevTime>=nextTime){
+    const afterId=track[nextIndex+1];
+    const afterTime=afterId ? times[afterId+c.suffix] : null;
+    const leg=afterTime && afterTime>nextTime
+      ? Math.min(240,Math.max(60,afterTime-nextTime))
+      : 120;
+    prevTime=nextTime-leg;
+  }
+
+  const p=clamp01((now-prevTime)/(nextTime-prevTime));
+  return (nextIndex-2)+p;
+}
+
+function monotonicSelectedProgress(raw){
+  if(!selectedTrip || raw==null || !Number.isFinite(raw)) return raw;
+
+  const old=selectedProgressMax.get(selectedTrip);
+  const value=old==null ? raw : Math.max(old,raw);
+
+  selectedProgressMax.set(selectedTrip,value);
+  return value;
+}
+
+function progressFromVehiclePosition(p){
+  const c=routeConfig();
+  if(!p || p.dir!==c.suffix) return null;
+
+  if(p.stopped){
+    const i=c.path.indexOf(p.stop);
+    return i>=0 ? i : null;
+  }
+
+  const a=c.path.indexOf(p.prev);
+  const b=c.path.indexOf(p.stop);
+  if(a<0 || b<0) return null;
+
+  return (a+b)/2;
+}
+
+
+
+function cleanStopName(id){return NAME[id]||id||"Unknown stop";}
+function alertKey(kind,stopId){return `${selectedTrip||"none"}:${routeMode}:${kind}:${stopId}`;}
+
+function modeSupported(mode){
+  if(mode==="system") return ("Notification" in window) || ("serviceWorker" in navigator);
+  if(mode==="voice") return "speechSynthesis" in window;
+  if(mode==="sound") return !!(window.AudioContext||window.webkitAudioContext);
+  if(mode==="haptic") return "vibrate" in navigator;
+  if(mode==="badge") return ("setAppBadge" in navigator) || true; // title fallback always works
+  if(mode==="wake") return "wakeLock" in navigator;
+  return true;
+}
+
+function syncModeButtons(){
+  document.querySelectorAll(".mode-btn[data-mode]").forEach(btn=>{
+    const mode=btn.dataset.mode;
+    const supported=modeSupported(mode);
+    btn.classList.toggle("on",!!stopAlertModes[mode]);
+    btn.classList.toggle("unsupported",!supported && mode!=="badge");
+    btn.setAttribute("aria-pressed",String(!!stopAlertModes[mode]));
+  });
+  const sys=document.getElementById("systemModeStatus");
+  if(sys){
+    if(!("Notification" in window)) sys.textContent="not available here";
+    else sys.textContent=Notification.permission==="granted"?"allowed":Notification.permission==="denied"?"blocked":"permission needed";
+  }
+  const hap=document.getElementById("hapticModeStatus"); if(hap) hap.textContent=("vibrate" in navigator)?"supported":"not supported on this device";
+  const badge=document.getElementById("badgeModeStatus"); if(badge) badge.textContent=("setAppBadge" in navigator)?"badge + title":"title fallback";
+  const wake=document.getElementById("wakeModeStatus"); if(wake) wake.textContent=wakeLock?"screen held awake":(("wakeLock" in navigator)?"tap to authorize":"not supported");
+  const state=document.getElementById("stopAlertState");
+  if(state) state.textContent=stopAlertsOn?"ALL STOPS":"OFF";
+}
+
+async function primeAudio(){
+  try{
+    const AC=window.AudioContext||window.webkitAudioContext;
+    if(!AC) return false;
+    if(!audioCtx) audioCtx=new AC();
+    if(audioCtx.state==="suspended") await audioCtx.resume();
+    return true;
+  }catch{return false;}
+}
+
+function playStopChime(kind="next"){
+  if(!stopAlertModes.sound) return;
+  try{
+    const AC=window.AudioContext||window.webkitAudioContext; if(!AC) return;
+    if(!audioCtx) audioCtx=new AC();
+    const now=audioCtx.currentTime;
+    const notes=kind==="arriving"?[880,1174.66,1396.91]:[659.25,880];
+    notes.forEach((freq,i)=>{
+      const o=audioCtx.createOscillator(); const g=audioCtx.createGain();
+      o.type="sine";o.frequency.value=freq;
+      g.gain.setValueAtTime(0.0001,now+i*.12);
+      g.gain.exponentialRampToValueAtTime(.16,now+i*.12+.015);
+      g.gain.exponentialRampToValueAtTime(0.0001,now+i*.12+.18);
+      o.connect(g);g.connect(audioCtx.destination);o.start(now+i*.12);o.stop(now+i*.12+.2);
+    });
+  }catch{}
+}
+
+function speakStop(text){
+  if(!stopAlertModes.voice || !("speechSynthesis" in window)) return;
+  try{
+    speechSynthesis.cancel();
+    const u=new SpeechSynthesisUtterance(text);u.rate=.94;u.pitch=1;u.volume=1;
+    speechSynthesis.speak(u);
+  }catch{}
+}
+
+function flashStopAlert(kicker,stop,copy,danger=false){
+  if(!stopAlertModes.flash) return;
+  const box=document.getElementById("alertFlash"); if(!box) return;
+  document.getElementById("alertFlashKicker").textContent=kicker;
+  document.getElementById("alertFlashStop").textContent=stop;
+  document.getElementById("alertFlashCopy").textContent=copy;
+  box.classList.toggle("danger",!!danger);box.classList.add("show");
+  clearTimeout(flashTimer);flashTimer=setTimeout(()=>box.classList.remove("show"),kindDuration(kicker));
+}
+function kindDuration(kicker){return /ARRIVING|GET OFF/i.test(kicker)?2400:1500;}
+
+async function showSystemStopNotification(title,body,tag){
+  if(!stopAlertModes.system) return;
+  try{
+    if("Notification" in window && Notification.permission!=="granted") return;
+    if("serviceWorker" in navigator){
+      const reg=serviceWorkerRegistration || await navigator.serviceWorker.ready.catch(()=>null);
+      if(reg?.showNotification){
+        serviceWorkerRegistration=reg;
+        await reg.showNotification(title,{body,tag,renotify:true,vibrate:[160,80,160],data:{url:location.href}});
+        return;
+      }
+    }
+    if("Notification" in window && Notification.permission==="granted") new Notification(title,{body,tag,renotify:true});
+  }catch{}
+}
+
+function updateAppBadge(count,title){
+  if(!stopAlertModes.badge) return;
+  try{document.title=title||"NYC Subway Direction Guard";}catch{}
+  try{if("setAppBadge" in navigator) navigator.setAppBadge(Math.max(1,Number(count)||1));}catch{}
+}
+function clearAppBadge(){
+  try{document.title="NYC Subway Direction Guard";}catch{}
+  try{if("clearAppBadge" in navigator) navigator.clearAppBadge();}catch{}
+}
+
+async function requestWakeLock(){
+  if(!stopAlertModes.wake || !("wakeLock" in navigator) || document.visibilityState!=="visible") return false;
+  try{
+    if(!wakeLock){wakeLock=await navigator.wakeLock.request("screen");wakeLock.addEventListener("release",()=>{wakeLock=null;syncModeButtons();});}
+    syncModeButtons(); return true;
+  }catch{return false;}
+}
+
+async function enableAllNotificationModes(){
+  Object.keys(stopAlertModes).forEach(k=>stopAlertModes[k]=true);stopAlertsOn=true;
+  await primeAudio();
+  if("Notification" in window && Notification.permission==="default"){
+    try{await Notification.requestPermission();}catch{}
+  }
+  await requestWakeLock();
+  syncModeButtons();
+  showSafetyToast("All stop alerts enabled","Visual, voice, chime, vibration, system notification, badge/title and wake-screen modes are enabled where supported.");
+  playStopChime("next");
+  speakStop("Stop alerts enabled.");
+}
+
+function notifyEveryStop(kind,stopId,remainSec=null){
+  if(!stopAlertsOn || !selectedTrip || !stopId) return;
+  const c=routeConfig(), d=directionGuardCopy(), name=cleanStopName(stopId), isDest=stopId===c.destination;
+  const arriving=kind==="arriving";
+  const kicker=isDest?(arriving?"GET OFF HERE":"DESTINATION NEXT"):(arriving?"ARRIVING":"NEXT STOP");
+  const title=isDest?`${kicker} · ${name}`:`${kicker} · ${name}`;
+  const body=isDest
+    ? `${name} is your destination. Exit the ${d.word.toLowerCase()} 1 train.`
+    : `${d.word} 1 · ${name}${remainSec!=null&&remainSec>0?` in about ${Math.max(1,Math.round(remainSec/60))} min`:""}.`;
+  if(stopAlertModes.toast) showSafetyToast(title,body,isDest&&arriving);
+  flashStopAlert(kicker,name,body,isDest&&arriving);
+  playStopChime(arriving?"arriving":"next");
+  if(stopAlertModes.haptic) haptic(arriving?[220,80,220]:[90,60,90]);
+  speakStop(isDest
+    ? (arriving?`Arriving at ${name}. This is your stop. Please exit the train.`:`Your destination is next, ${name}. Get ready to exit.`)
+    : (arriving?`Arriving at ${name}.`:`Next stop, ${name}.`));
+  showSystemStopNotification(title,body,`nyc-stop-${selectedTrip}-${kind}-${stopId}`);
+  const idx=c.path.indexOf(stopId), remaining=idx>=0?Math.max(1,c.path.length-idx):1;
+  updateAppBadge(remaining,`${kicker}: ${name} · 1 Train`);
+}
+
+function renderStopList(progress,nextId,nextTime){
+  const box=document.getElementById("stopList"); if(!box) return;
+  if(!selectedTrip){box.innerHTML='<div class="stop-row"><span class="stop-marker"></span><span class="stop-name">Select a train to load stops</span><span class="stop-eta">--</span></div>';return;}
+  const c=routeConfig(), snap=tripSnapshots.get(selectedTrip), now=Date.now()/1000;
+  if(!snap){box.innerHTML='<div class="stop-row"><span class="stop-marker"></span><span class="stop-name">Loading stop times…</span><span class="stop-eta">--</span></div>';return;}
+  let nextIndex=nextId?c.path.indexOf(nextId):-1;
+  if(nextIndex<0 && progress!=null) nextIndex=Math.min(c.path.length-1,Math.max(0,Math.floor(progress)+1));
+  box.innerHTML=c.path.map((id,i)=>{
+    const t=snap.times[id+c.suffix]; const remain=t?Math.round(t-now):null;
+    const cls=["stop-row"];
+    if(i<nextIndex) cls.push("passed");
+    if(i===nextIndex) cls.push("next");
+    if(id===c.destination) cls.push("destination");
+    if(i===nextIndex && remain!=null && remain<=20 && remain>=-8) cls.push("arriving");
+    const eta=t?new Date(t*1000).toLocaleTimeString([],{hour:"numeric",minute:"2-digit"}):"--";
+    return `<div class="${cls.join(" ")}" data-stop-id="${id}"><span class="stop-marker"></span><span class="stop-name">${escapeHtml(cleanStopName(id))}</span><span class="stop-eta">${eta}</span></div>`;
+  }).join("");
+  const active=box.querySelector(".stop-row.next"); if(active && stopLastNextId!==nextId){try{active.scrollIntoView({block:"nearest",behavior:"smooth"});}catch{}}
+}
+
+function checkStopNotifications(nextId,nextTime,progress){
+  renderStopList(progress,nextId,nextTime);
+  if(!stopAlertsOn || !selectedTrip || !nextId) return;
+  if(stopAlertTrip!==selectedTrip){stopAlertTrip=selectedTrip;stopNextNotified.clear();stopArrivingNotified.clear();stopLastNextId=null;clearAppBadge();}
+  const now=Date.now()/1000; const remain=nextTime?nextTime-now:null;
+  const nk=alertKey("next",nextId);
+  if(!stopNextNotified.has(nk)){
+    stopNextNotified.add(nk);stopLastNextId=nextId;notifyEveryStop("next",nextId,remain);
+  }
+  const ak=alertKey("arriving",nextId);
+  if(remain!=null && remain<=20 && remain>=-12 && !stopArrivingNotified.has(ak)){
+    stopArrivingNotified.add(ak);notifyEveryStop("arriving",nextId,remain);
+  }
+}
+
+function renderSelected(){
+  const snap=tripSnapshots.get(selectedTrip);
+  const hint=document.getElementById("selectedHint");
+  const info=document.getElementById("selectedInfo");
+
+  if(!selectedTrip || !snap){
+    hint.hidden=false;
+    info.hidden=true;
+    return;
+  }
+
+  hint.hidden=true;
+  info.hidden=false;
+
+  const c=routeConfig();
+  const now=Date.now()/1000;
+  const times=snap.times;
+  const destinationTime=times[c.destination+c.suffix];
+
+  const rawProgress=rawSelectedRouteProgress(times,now);
+  const progress=monotonicSelectedProgress(rawProgress);
+
+  let nextId=null;
+  let nextTime=null;
+  let segmentP=0;
+
+  if(progress!=null && progress < c.path.length-1){
+    if(progress<0){
+      nextId=c.origin;
+      segmentP=clamp01(progress+1);
+    }else{
+      const i=Math.max(
+        0,
+        Math.min(c.path.length-2,Math.floor(progress+1e-6))
+      );
+      nextId=c.path[i+1];
+      segmentP=clamp01(progress-i);
+    }
+
+    nextTime=times[nextId+c.suffix] || null;
+
+    document.getElementById("nextStop").textContent=NAME[nextId]||nextId;
+    document.getElementById("nextRemain").textContent=
+      nextTime ? fmtRemain(nextTime-now) : "--";
+    document.getElementById("nextBar").style.width=
+      (segmentP*100).toFixed(0)+"%";
+
+    const segmentIndex=c.path.indexOf(nextId);
+    const stops=segmentIndex>=0 ? c.path.length-segmentIndex : c.path.length;
+    document.getElementById("stopsRemain").textContent=stops;
+  }else{
+    document.getElementById("nextStop").textContent="--";
+    document.getElementById("nextRemain").textContent="--";
+    document.getElementById("nextBar").style.width=
+      progress!=null && progress>=c.path.length-1 ? "100%" : "0%";
+    document.getElementById("stopsRemain").textContent="0";
+  }
+
+  checkStopNotifications(nextId,nextTime,progress);
+  checkArrivalReminder(destinationTime,nextId);
+
+  if(destinationTime){
+    document.getElementById("columbiaETA").textContent=
+      new Date(destinationTime*1000).toLocaleTimeString([],{
+        hour:"2-digit",minute:"2-digit"
+      });
+
+    document.getElementById("columbiaRemain").textContent=
+      fmtRemain(destinationTime-now);
+  }else{
+    document.getElementById("columbiaETA").textContent="--";
+    document.getElementById("columbiaRemain").textContent="--";
+  }
+
+  const journey=progress==null
+    ? 0
+    : clamp01(progress/(c.path.length-1));
+
+  document.getElementById("journeyBar").style.width=
+    (journey*100).toFixed(0)+"%";
+}
+
+function stationY(stopId){
+  const i=IDS.indexOf(stopId);
+  if(i<0) return null;
+  // Columbia at top, Times Sq at bottom.
+  return 32 + (IDS.length-1-i)*42;
+}
+
+function trainTrackPosition(v){
+  if(!v || v.trip?.routeId!=="1" || !v.stopId) return null;
+
+  const dir=v.stopId.slice(-1);
+  const stop=v.stopId.slice(0,-1);
+  const seq=dir==="N" ? IDS : dir==="S" ? [...IDS].reverse() : null;
+  if(!seq) return null;
+
+  const i=seq.indexOf(stop);
+  if(i<0) return null;
+
+  const status=v.currentStatus ?? 2;
+  const yStop=stationY(stop);
+
+  // STOPPED_AT
+  if(status===1){
+    return {
+      tripId:v.trip?.tripId || "",
+      dir,
+      stopped:true,
+      stop,
+      y:yStop
+    };
+  }
+
+  // For INCOMING_AT / IN_TRANSIT_TO, stop_id is the next stop.
+  // If it is the first stop in this directional segment, the train
+  // has not entered Times Sq–Columbia yet.
+  if(i===0) return null;
+
+  const prev=seq[i-1];
+  const yPrev=stationY(prev);
+
+  return {
+    tripId:v.trip?.tripId || "",
+    dir,
+    stopped:false,
+    prev,
+    stop,
+    y:(yPrev+yStop)/2
+  };
+}
+
+
+function selectedTrackEstimate(){
+  if(!selectedTrip) return null;
+
+  const snap=tripSnapshots.get(selectedTrip);
+  if(!snap) return null;
+
+  const c=routeConfig();
+  const now=Date.now()/1000;
+  const raw=rawSelectedRouteProgress(snap.times,now);
+  const progress=monotonicSelectedProgress(raw);
+
+  if(progress==null || progress<0) return null;
+
+  if(progress>=c.path.length-1){
+    return {
+      tripId:selectedTrip,
+      dir:c.suffix,
+      stopped:true,
+      stop:c.destination,
+      y:stationY(c.destination)
+    };
+  }
+
+  const nearest=Math.round(progress);
+  if(
+    Math.abs(progress-nearest)<0.03 &&
+    nearest>=0 &&
+    nearest<c.path.length
+  ){
+    return {
+      tripId:selectedTrip,
+      dir:c.suffix,
+      stopped:true,
+      stop:c.path[nearest],
+      y:stationY(c.path[nearest])
+    };
+  }
+
+  const i=Math.max(
+    0,
+    Math.min(c.path.length-2,Math.floor(progress))
+  );
+  const p=clamp01(progress-i);
+  const prev=c.path[i];
+  const stop=c.path[i+1];
+  const yPrev=stationY(prev);
+  const yNext=stationY(stop);
+
+  return {
+    tripId:selectedTrip,
+    dir:c.suffix,
+    stopped:false,
+    prev,
+    stop,
+    y:yPrev+(yNext-yPrev)*p
+  };
+}
+
+function renderTrack(active){
+  const svg=document.getElementById("trackSvg");
+  const trackX=102;
+
+  let positions=active
+    .map(v=>trainTrackPosition(v))
+    .filter(Boolean);
+
+  // Live MTA can correct the selected train forward, but never backward.
+  const liveSelected=positions.find(p=>p.tripId===selectedTrip) || null;
+  const liveProgress=progressFromVehiclePosition(liveSelected);
+  if(liveProgress!=null) monotonicSelectedProgress(liveProgress);
+
+  // Draw from the same monotonic local/offline progress used by Selected train.
+  const offlineSelected=selectedTrackEstimate();
+  const selected=offlineSelected || liveSelected;
+
+  if(selected){
+    positions=positions.filter(p=>p.tripId!==selectedTrip);
+    positions.push(selected);
+  }
+
+  let s="";
+  s+=`<line x1="156" y1="18" x2="156" y2="468"
+    stroke="#eeeeef" stroke-width="1"/>`;
+
+  // Base line / segments.
+  for(let i=0;i<IDS.length-1;i++){
+    const a=IDS[i], b=IDS[i+1];
+    const y1=stationY(a), y2=stationY(b);
+
+    let chosen=false;
+    if(selected && !selected.stopped){
+      chosen=
+        (selected.prev===a && selected.stop===b) ||
+        (selected.prev===b && selected.stop===a);
+    }
+
+    s+=`<line x1="${trackX}" y1="${y1}" x2="${trackX}" y2="${y2}"
+      stroke="${chosen ? "#d9232e" : "#d7d7dc"}"
+      stroke-width="${chosen ? 8 : 4}"
+      stroke-linecap="round"/>`;
+  }
+
+  // Station dots and labels.
+  for(const id of [...IDS].reverse()){
+    const y=stationY(id);
+    const selectedStop=selected?.stopped && selected.stop===id;
+
+    s+=`<circle cx="${trackX}" cy="${y}" r="${selectedStop ? 8 : 5.5}"
+      fill="${selectedStop ? "#d9232e" : "#fff"}"
+      stroke="${selectedStop ? "#d9232e" : "#888"}"
+      stroke-width="2"/>`;
+
+    const important=id==="127" || id==="117";
+    s+=`<text x="180" y="${y+4}"
+      font-size="${important ? 13 : 11}"
+      font-weight="${important ? 700 : 400}"
+      fill="#222">${NAME[id]}</text>`;
+  }
+
+  // Train markers. Other trains are deliberately lighter.
+  positions.forEach((p,index)=>{
+    const chosen=p.tripId===selectedTrip;
+    const x=p.dir==="N" ? 78 : 126;
+    const opacity=chosen ? 1 : 0.24;
+
+    s+=`<circle cx="${x}" cy="${p.y}" r="${chosen ? 11 : 8}"
+      fill="#d9232e" opacity="${opacity}"
+      stroke="${chosen ? "#111" : "none"}"
+      stroke-width="${chosen ? 2 : 0}"/>`;
+
+    s+=`<text x="${x}" y="${p.y+3.5}" text-anchor="middle"
+      font-size="${chosen ? 10 : 8}" font-weight="700"
+      fill="#fff" opacity="${chosen ? 1 : 0.75}">1</text>`;
+  });
+
+  // Direction labels.
+  s+=`<text x="54" y="486" font-size="10" fill="#777">↑ Uptown</text>`;
+  s+=`<text x="112" y="486" font-size="10" fill="#777">↓ Downtown</text>`;
+
+  svg.innerHTML=s;
+}
+
+function selectTrain(i){
+  const newTrip=currentTrips[i]?.tripId || null;
+
+  if(newTrip!==selectedTrip){
+    arrivalReminderTriggered=false;
+    stopAlertTrip=null; stopNextNotified.clear(); stopArrivingNotified.clear(); stopLastNextId=null; clearAppBadge();
+  }
+
+  selectedTrip=newTrip;
+  if(selectedTrip){primeAudio();requestWakeLock();}
+
+  // Automatically enable arrival reminder after choosing a train.
+  arrivalReminderOn=!!selectedTrip;
+  arrivalReminderTrip=selectedTrip || null;
+
+  updateArrivalReminderUI();
+
+  for(let j=0;j<3;j++){
+    document.getElementById("row"+j)
+      .classList.toggle("selected",j===i && !!selectedTrip);
+  }
+
+  renderTrack(currentActive);
+  renderSelected();
+  updateTravelComparison();
+  renderOutlook();
+  comfortExpectation();
+}
+
+async function update(){
+  try{
+    const r=await fetch(FEED);
+    if(!r.ok) return;
+
+    const feed=FeedMessage.decode(new Uint8Array(await r.arrayBuffer()));
+    const now=Date.now()/1000;
+    const c=routeConfig();
+    const originStop=c.origin+c.suffix;
+    const destinationStop=c.destination+c.suffix;
+    const found=[];
+    const active=[];
+    mtaAlerts=[];
+
+    for(const e of feed.entity){
+      const u=e.tripUpdate;
+
+      if(u && u.trip?.routeId==="1"){
+        saveSnapshot(u);
+        let start=null,end=null;
+
+        for(const s of u.stopTimeUpdate||[]){
+          if(s.stopId===originStop)
+            start=n(s.departure?.time ?? s.arrival?.time);
+
+          if(s.stopId===destinationStop)
+            end=n(s.arrival?.time ?? s.departure?.time);
+        }
+
+        if(start && end && start>=now-30 && end>start){
+          found.push({
+            start,
+            tripId:u.trip?.tripId || "",
+            wait:Math.max(0,Math.round((start-now)/60)),
+            arrive:Math.max(0,Math.round((end-now)/60)),
+            ride:Math.round((end-start)/60)
+          });
+        }
+      }
+
+      if(e.alert) mtaAlerts.push(e.alert);
+
+      if(e.vehicle?.trip?.tripId){
+        vehicleState.set(e.vehicle.trip.tripId,e.vehicle);
+      }
+
+      const pos=trainTrackPosition(e.vehicle);
+      if(pos) active.push(e.vehicle);
+    }
+
+    found.sort((a,b)=>a.start-b.start);
+    currentTrips=[found[0]||null,found[1]||null,found[2]||null];
+
+    for(let i=0;i<3;i++){
+      const t=found[i];
+      document.getElementById("w"+i).textContent=t ? t.wait : "--";
+      document.getElementById("a"+i).textContent=t ? t.arrive : "--";
+      document.getElementById("r"+i).textContent=t ? t.ride : "--";
+      document.getElementById("row"+i)
+        .classList.toggle("selected",!!t && t.tripId===selectedTrip);
+    }
+
+    document.getElementById("count").textContent=active.length;
+    currentActive=active;
+    renderTrack(currentActive);
+
+    renderSelected();
+    updateTravelComparison();
+    renderOutlook();
+    comfortExpectation();
+
+  }catch{}
+}
+
+
+function updateRouteUI(){
+  const c=routeConfig();
+
+  document.getElementById("routeLabel").textContent=
+    `${c.originName} → ${c.destinationName}`;
+
+  document.querySelectorAll(".tripDest").forEach(el=>{
+    el.textContent=c.destinationShort;
+  });
+
+  document.getElementById("stopsLabel").textContent=
+    `Stops to ${c.destinationShort}`;
+
+  document.getElementById("etaLabel").textContent=
+    `ETA ${c.destinationShort}`;
+
+  document.getElementById("destinationActivityLabel").textContent=
+    `Destination activity · ${c.destinationAlert}`;
+
+  document.getElementById("nwsSourcePlace").textContent=
+    c.destinationShort;
+
+  document.getElementById("trackSvg").setAttribute(
+    "aria-label",
+    `1 Train positions between ${c.originName} and ${c.destinationName}`
+  );
+
+  updateArrivalReminderUI();
+  if(typeof updateDirectionGuardUI==="function") updateDirectionGuardUI();
+}
+
+function switchRoute(){
+  routeMode=routeMode==="N" ? "S" : "N";
+
+  selectedTrip=null;
+  currentTrips=[null,null,null];
+  arrivalReminderOn=false;
+  arrivalReminderTrip=null;
+  arrivalReminderTriggered=false;
+  selectedProgressMax.clear();
+  stopAlertTrip=null; stopNextNotified.clear(); stopArrivingNotified.clear(); stopLastNextId=null; clearAppBadge();
+
+  for(let i=0;i<3;i++){
+    document.getElementById("w"+i).textContent="--";
+    document.getElementById("a"+i).textContent="--";
+    document.getElementById("r"+i).textContent="--";
+    document.getElementById("row"+i).classList.remove("selected");
+  }
+
+  updateRouteUI();
+  renderSelected();
+  updateTravelComparison();
+  renderOutlook();
+  renderTrack(currentActive);
+  comfortExpectation();
+
+  update();
+  updateWeather();
+  updateNotifyActivity();
+  updateNwsActivity();
+}
+
+document.getElementById("swapRoute").addEventListener("click",switchRoute);
+
+document.getElementById("refresh").addEventListener("click",()=>{
+  update();
+  updateWeather();
+  updateHistory();
+  updateNotifyActivity();
+  updateNwsActivity();
+  update311Activity();
+});
+for(let i=0;i<3;i++){
+  document.getElementById("row"+i).addEventListener("click",()=>selectTrain(i));
+}
+
+document.getElementById("arrivalReminderBtn").addEventListener("click",()=>{
+  if(!selectedTrip) return;
+
+  arrivalReminderOn=!arrivalReminderOn;
+  arrivalReminderTrip=arrivalReminderOn ? selectedTrip : null;
+  arrivalReminderTriggered=false;
+  updateArrivalReminderUI();
+
+  if(arrivalReminderOn) renderSelected();
+});
+
+
+// ---------- Direction Guard: pre-boarding safety layer ----------
+let directionAlertsOn=true;
+let directionReminderTrip=null;
+let directionReminderTriggered=false;
+let platformVerified=false;
+
+function directionGuardCopy(){
+  if(routeMode==="N") return {
+    word:"UPTOWN", qualifier:"toward The Bronx", inline:"Uptown",
+    board:"Uptown & The Bronx", avoid:"Downtown / South Ferry",
+    terminal:"Van Cortlandt Park–242 St", opposite:"South Ferry",
+    correctButton:"I see Uptown signs", wrongButton:"I see Downtown signs"
+  };
+  return {
+    word:"DOWNTOWN", qualifier:"toward Lower Manhattan", inline:"Downtown",
+    board:"Downtown & South Ferry", avoid:"Uptown / The Bronx",
+    terminal:"South Ferry", opposite:"Van Cortlandt Park–242 St",
+    correctButton:"I see Downtown signs", wrongButton:"I see Uptown signs"
+  };
+}
+
+function updateDirectionGuardUI(){
+  const c=routeConfig();
+  const d=directionGuardCopy();
+  const set=(id,val)=>{const el=document.getElementById(id); if(el) el.textContent=val;};
+  set("directionWord",d.word);
+  set("directionQualifier",d.qualifier);
+  set("heroOrigin",c.originName);
+  set("heroDestination",c.destinationName);
+  set("boardSign",d.board+" · toward "+d.terminal);
+  set("avoidSign",d.avoid+" · toward "+d.opposite);
+  set("selectedDirectionText",d.word+" 1");
+  set("verifyCorrectBtn",d.correctButton);
+  set("verifyOppositeBtn",d.wrongButton);
+  document.querySelectorAll(".directionInline").forEach(el=>el.textContent=d.inline);
+  const status=document.getElementById("platformStatus");
+  if(status && !platformVerified){status.className="platform-status";status.textContent="Check the platform signs before boarding.";}
+  updateDirectionAlertUI();
+}
+
+let toastTimer=null;
+function showSafetyToast(title,body,danger=false){
+  const box=document.getElementById("safetyToast");
+  if(!box) return;
+  document.getElementById("safetyToastTitle").textContent=title;
+  document.getElementById("safetyToastBody").textContent=body;
+  box.classList.toggle("danger",!!danger);
+  box.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>box.classList.remove("show"),5200);
+}
+
+function haptic(pattern=[80,60,80]){try{if(navigator.vibrate) navigator.vibrate(pattern);}catch{}}
+function speakDirection(text){
+  if(!("speechSynthesis" in window)) return;
+  try{speechSynthesis.cancel();speechSynthesis.speak(new SpeechSynthesisUtterance(text));}catch{}
+}
+
+async function requestDirectionNotifications(){
+  if(!("Notification" in window)) return "unsupported";
+  if(Notification.permission==="granted") return "granted";
+  if(Notification.permission==="denied") return "denied";
+  try{return await Notification.requestPermission();}catch{return "denied";}
+}
+
+function updateDirectionAlertUI(){
+  const btn=document.getElementById("directionAlertsBtn");
+  const status=document.getElementById("directionAlertStatus");
+  if(btn) btn.textContent=directionAlertsOn ? "Direction alert: On" : "Direction alert: Off";
+  if(status){
+    if(!directionAlertsOn) status.textContent="Pre-boarding direction warning is off.";
+    else if("Notification" in window && Notification.permission==="denied") status.textContent="In-app direction warning on · system notifications blocked.";
+    else status.textContent="Warn 90 sec before your train arrives.";
+  }
+}
+
+function fireDirectionReminder(){
+  if(directionReminderTriggered || !selectedTrip) return;
+  directionReminderTriggered=true;
+  const c=routeConfig(); const d=directionGuardCopy();
+  const title=`${d.word} 1 — BOARD THIS DIRECTION`;
+  const body=`${c.originName} → ${c.destinationName}. Follow ${d.board}. Do not board toward ${d.opposite}.`;
+  showSafetyToast(title,body,false); haptic([140,80,140,80,220]);
+  speakDirection(`${d.word} one train. Board only the ${d.word.toLowerCase()} direction. Do not board toward ${d.opposite}.`);
+  if(directionAlertsOn && "Notification" in window && Notification.permission==="granted"){
+    try{new Notification(title,{body,tag:"nyc-subway-direction",renotify:true});}catch{}
+  }
+}
+
+function checkDepartureDirectionReminder(){
+  const board=document.getElementById("boardCountdown");
+  if(!selectedTrip){if(board) board.textContent="Pick a train";return;}
+  const snap=tripSnapshots.get(selectedTrip); if(!snap) return;
+  const c=routeConfig(); const t=snap.times[c.origin+c.suffix]; if(!t) return;
+  const remain=t-Date.now()/1000;
+  if(board){
+    if(remain>0) board.textContent=`Board in ${fmtRemain(remain)}`;
+    else if(remain>-45) board.textContent="Board now";
+    else board.textContent="Train departed";
+  }
+  if(directionAlertsOn && directionReminderTrip===selectedTrip && !directionReminderTriggered && remain<=90 && remain>=-20) fireDirectionReminder();
+}
+
+function verifyPlatform(correct){
+  const c=routeConfig(); const d=directionGuardCopy(); const status=document.getElementById("platformStatus");
+  if(correct){
+    platformVerified=true;
+    if(status){status.className="platform-status safe";status.textContent=`✓ Correct platform: ${d.word} 1 toward ${d.terminal}.`;}
+    document.getElementById("directionStatusChip").textContent="Platform verified";
+    showSafetyToast("Correct platform",`${d.word} 1 toward ${d.terminal}.`,false); haptic([60]);
+  }else{
+    platformVerified=false;
+    if(status){status.className="platform-status danger";status.textContent=`WRONG DIRECTION — move to the ${d.word} side before boarding.`;}
+    document.getElementById("directionStatusChip").textContent="Wrong platform";
+    showSafetyToast("WRONG DIRECTION",`You need the ${d.word} 1. Do not board toward ${d.opposite}.`,true); haptic([220,80,220,80,220]);
+    speakDirection(`Wrong direction. You need the ${d.word.toLowerCase()} one train. Do not board toward ${d.opposite}.`);
+  }
+}
+
+document.getElementById("verifyCorrectBtn")?.addEventListener("click",()=>verifyPlatform(true));
+document.getElementById("verifyOppositeBtn")?.addEventListener("click",()=>verifyPlatform(false));
+document.getElementById("directionAlertsBtn")?.addEventListener("click",async()=>{
+  directionAlertsOn=!directionAlertsOn;
+  if(directionAlertsOn){
+    const p=await requestDirectionNotifications();
+    if(p==="granted") showSafetyToast("Direction alerts on","You’ll get a warning before your selected train reaches the station.");
+  }
+  updateDirectionAlertUI();
+});
+
+document.querySelectorAll("#row0,#row1,#row2").forEach(row=>row.addEventListener("click",async()=>{
+  directionReminderTriggered=false; directionReminderTrip=selectedTrip || null; platformVerified=false;
+  document.getElementById("directionStatusChip").textContent="Correct direction";
+  updateDirectionGuardUI(); checkDepartureDirectionReminder();
+  if(directionAlertsOn) await requestDirectionNotifications();
+}));
+
+document.getElementById("swapRoute")?.addEventListener("click",()=>{
+  directionReminderTriggered=false; directionReminderTrip=null; platformVerified=false;
+  document.getElementById("directionStatusChip").textContent="Correct direction";
+  updateDirectionGuardUI();
+});
+
+
+
+document.getElementById("enableAllAlertsBtn")?.addEventListener("click",enableAllNotificationModes);
+document.querySelectorAll(".mode-btn[data-mode]").forEach(btn=>btn.addEventListener("click",async()=>{
+  const mode=btn.dataset.mode;
+  stopAlertModes[mode]=!stopAlertModes[mode];
+  if(stopAlertModes[mode]){
+    if(mode==="system" && "Notification" in window && Notification.permission==="default"){try{await Notification.requestPermission();}catch{}}
+    if(mode==="sound") await primeAudio();
+    if(mode==="wake") await requestWakeLock();
+    if(mode==="voice") speakStop("Voice stop alerts on.");
+  }else if(mode==="wake" && wakeLock){try{await wakeLock.release();}catch{}wakeLock=null;}
+  syncModeButtons();
+}));
+
+document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible" && stopAlertModes.wake) requestWakeLock();});
+
+if("serviceWorker" in navigator && location.protocol.startsWith("http")){
+  navigator.serviceWorker.register("subway-stop-sw.js").then(reg=>{serviceWorkerRegistration=reg;}).catch(()=>{});
+}
+
+syncModeButtons();
+
+updateDirectionGuardUI();
+setInterval(checkDepartureDirectionReminder,1000);
+
+updateRouteUI();
+renderTrack([]);
+update();
+updateWeather();
+updateNotifyActivity();
+updateNwsActivity();
+update311Activity();
+
+setInterval(updateNotifyActivity,120000);
+setInterval(updateNwsActivity,120000);
+setInterval(update311Activity,120000);
+updateHistory();
+setInterval(update,30000);
+setInterval(updateWeather,600000);
+setInterval(updateHistory,3600000);
+setInterval(()=>{renderSelected();renderTrack(currentActive);updateTravelComparison();renderOutlook();},1000);
+</script>
+
+</body>
+</html>
